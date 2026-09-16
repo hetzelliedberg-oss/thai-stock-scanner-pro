@@ -123,6 +123,106 @@ const SP500_CORE_LIST = [
   ...new Set([...US_MAG7, ...NASDAQ100_LIST.slice(0, 50), ...VUG_LIST.slice(0, 30), ...SCHD_LIST.slice(0, 30)])
 ];
 
+// Comprehensive Stock-to-Sector Taxonomy for Money Rotation Analysis
+const STOCK_SECTOR_MAP = {
+  // Thai - Energy & Utilities
+  PTT: 'Energy & Utilities', PTTEP: 'Energy & Utilities', PTTGC: 'Energy & Utilities', TOP: 'Energy & Utilities',
+  BANPU: 'Energy & Utilities', SPRC: 'Energy & Utilities', BCP: 'Energy & Utilities', OR: 'Energy & Utilities',
+  GULF: 'Energy & Utilities', GPSC: 'Energy & Utilities', BGRIM: 'Energy & Utilities', EGCO: 'Energy & Utilities',
+  RATCH: 'Energy & Utilities', EA: 'Energy & Utilities', TTW: 'Energy & Utilities', WHAUP: 'Energy & Utilities',
+  SUPER: 'Energy & Utilities', SSP: 'Energy & Utilities', SPCG: 'Energy & Utilities', TPIPP: 'Energy & Utilities',
+  
+  // Thai - Banking & Financial Services
+  KBANK: 'Finance & Banking', SCB: 'Finance & Banking', BBL: 'Finance & Banking', KTB: 'Finance & Banking',
+  TTB: 'Finance & Banking', TISCO: 'Finance & Banking', KKP: 'Finance & Banking', MTC: 'Finance & Banking',
+  SAWAD: 'Finance & Banking', TIDLOR: 'Finance & Banking', BAM: 'Finance & Banking', JMT: 'Finance & Banking',
+  KTC: 'Finance & Banking', CHAYO: 'Finance & Banking', SINGER: 'Finance & Banking', TCAP: 'Finance & Banking',
+  ASK: 'Finance & Banking', ASP: 'Finance & Banking', KGI: 'Finance & Banking', NCAP: 'Finance & Banking',
+
+  // Thai - Technology & Electronics
+  DELTA: 'Electronic Components', HANA: 'Electronic Components', KCE: 'Electronic Components', CCET: 'Electronic Components',
+  SVI: 'Electronic Components', ADVANC: 'Information & Telecom', TRUE: 'Information & Telecom', INTUCH: 'Information & Telecom',
+  DITTO: 'Technology & Cloud', BE8: 'Technology & Cloud', BBIK: 'Technology & Cloud', INSET: 'Technology & Cloud',
+  IIG: 'Technology & Cloud', SECURE: 'Technology & Cloud', NETBAY: 'Technology & Cloud', SYNEX: 'Technology & Cloud',
+  SIS: 'Technology & Cloud', COM7: 'Technology & Retail',
+
+  // Thai - Commerce & Retail
+  CPALL: 'Commerce & Retail', CPAXT: 'Commerce & Retail', CRC: 'Commerce & Retail', HMPRO: 'Commerce & Retail',
+  BJC: 'Commerce & Retail', GLOBAL: 'Commerce & Retail', DOHOME: 'Commerce & Retail', MC: 'Commerce & Retail',
+  KAMART: 'Commerce & Retail', BEAUTY: 'Commerce & Retail',
+
+  // Thai - Health Care Services
+  BDMS: 'Health Care Services', BH: 'Health Care Services', BCH: 'Health Care Services', CHG: 'Health Care Services',
+  PR9: 'Health Care Services', THG: 'Health Care Services', MASTER: 'Health Care Services', KLINIQ: 'Health Care Services',
+  EKH: 'Health Care Services', VIBHA: 'Health Care Services',
+
+  // Thai - Transportation & Logistics
+  AOT: 'Transportation & Logistics', BEM: 'Transportation & Logistics', BTS: 'Transportation & Logistics',
+  SJWD: 'Transportation & Logistics', PSL: 'Transportation & Logistics', RCL: 'Transportation & Logistics',
+  PRM: 'Transportation & Logistics', WICE: 'Transportation & Logistics', III: 'Transportation & Logistics',
+  KEX: 'Transportation & Logistics', NYT: 'Transportation & Logistics',
+
+  // Thai - Food, Beverage & Agribusiness
+  CPF: 'Food & Beverage', TU: 'Food & Beverage', CBG: 'Food & Beverage', OSP: 'Food & Beverage',
+  ICHI: 'Food & Beverage', SAPPE: 'Food & Beverage', TKN: 'Food & Beverage', PLUS: 'Food & Beverage',
+  COCOCO: 'Food & Beverage', XO: 'Food & Beverage', BTG: 'Food & Beverage', TFG: 'Food & Beverage',
+  STA: 'Food & Beverage', STGT: 'Food & Beverage', NER: 'Food & Beverage', TEGH: 'Food & Beverage',
+
+  // Thai - Property & Construction
+  CPN: 'Property Development', SPALI: 'Property Development', AP: 'Property Development', LH: 'Property Development',
+  SIRI: 'Property Development', ORI: 'Property Development', QH: 'Property Development', WHA: 'Property & Industrial Estate',
+  AMATA: 'Property & Industrial Estate', ROJNA: 'Property & Industrial Estate', SCC: 'Construction Materials',
+  SCCC: 'Construction Materials', CK: 'Construction Services', STEC: 'Construction Services', TASCO: 'Construction Materials',
+
+  // Thai - Tourism & Hospitality
+  MINT: 'Tourism & Leisure', CENTEL: 'Tourism & Leisure', ERW: 'Tourism & Leisure', SPA: 'Tourism & Leisure',
+  VRANDA: 'Tourism & Leisure',
+
+  // US - Mega Tech & Semiconductors
+  NVDA: 'Semiconductors', AMD: 'Semiconductors', AVGO: 'Semiconductors', INTC: 'Semiconductors',
+  QCOM: 'Semiconductors', TSM: 'Semiconductors', ASML: 'Semiconductors', MU: 'Semiconductors',
+  LRCX: 'Semiconductors', AMAT: 'Semiconductors', KLAC: 'Semiconductors', ARM: 'Semiconductors',
+  SMCI: 'Semiconductors', TXN: 'Semiconductors', ADI: 'Semiconductors', MRVL: 'Semiconductors',
+  AAPL: 'Consumer Electronics', MSFT: 'Software & Cloud', GOOGL: 'Internet & Search', GOOG: 'Internet & Search',
+  AMZN: 'E-Commerce & Cloud', META: 'Social Media & Ads', TSLA: 'Automotive & Clean Energy',
+
+  // US - Enterprise Software & Cybersecurity
+  CRM: 'Software & Cloud', ADBE: 'Software & Cloud', ORCL: 'Software & Cloud', NOW: 'Software & Cloud',
+  SNOW: 'Software & Cloud', PLTR: 'Software & AI', CRWD: 'Cybersecurity', PANW: 'Cybersecurity',
+  FTNT: 'Cybersecurity', ZS: 'Cybersecurity', DDOG: 'Software & Cloud', MDB: 'Software & Cloud',
+  WDAY: 'Software & Cloud', ADSK: 'Software & Cloud', TTD: 'Digital Advertising',
+
+  // US - Finance & Payments
+  JPM: 'Financial Services', BAC: 'Financial Services', WFC: 'Financial Services', C: 'Financial Services',
+  GS: 'Financial Services', MS: 'Financial Services', V: 'Financial Services', MA: 'Financial Services',
+  AXP: 'Financial Services', PYPL: 'Financial Services', BLK: 'Financial Services', SCHW: 'Financial Services',
+
+  // US - Healthcare & Biotechnology
+  LLY: 'Pharmaceuticals', NVO: 'Pharmaceuticals', UNH: 'Health Services', JNJ: 'Pharmaceuticals',
+  ABBV: 'Pharmaceuticals', MRK: 'Pharmaceuticals', PFE: 'Pharmaceuticals', TMO: 'Medical Technology',
+  ISRG: 'Medical Technology', VRTX: 'Biotechnology', REGN: 'Biotechnology', GILD: 'Biotechnology',
+  AMGN: 'Biotechnology', BIIB: 'Biotechnology',
+
+  // US - Consumer, Retail & Media
+  COST: 'Retail & Consumer', WMT: 'Retail & Consumer', HD: 'Retail & Consumer', LOW: 'Retail & Consumer',
+  TGT: 'Retail & Consumer', NKE: 'Consumer Goods', SBUX: 'Restaurants', MCD: 'Restaurants',
+  KO: 'Food & Beverage', PEP: 'Food & Beverage', MDLZ: 'Food & Beverage', PG: 'Consumer Goods',
+  NFLX: 'Media & Entertainment', DIS: 'Media & Entertainment', CMCSA: 'Media & Entertainment',
+  BKNG: 'Travel & Booking', ABNB: 'Travel & Booking', UBER: 'Mobility & Delivery', DASH: 'Mobility & Delivery',
+
+  // US - Energy & Industrial
+  XOM: 'Energy & Oil', CVX: 'Energy & Oil', COP: 'Energy & Oil', SLB: 'Energy & Oil',
+  EOG: 'Energy & Oil', CAT: 'Industrial Machinery', DE: 'Industrial Machinery', GE: 'Industrial Machinery',
+  BA: 'Aerospace & Defense', LMT: 'Aerospace & Defense', RTX: 'Aerospace & Defense', HON: 'Industrial Conglomerate'
+};
+
+function getSectorForStock(symbol, tvSector = '') {
+  const clean = String(symbol || '').trim().toUpperCase();
+  if (STOCK_SECTOR_MAP[clean]) return STOCK_SECTOR_MAP[clean];
+  if (tvSector && tvSector !== 'General' && tvSector.trim() !== '') return tvSector;
+  return 'Diversified / Others';
+}
+
 // Macro Benchmarks
 const US_BENCHMARKS_CONFIG = [
   { id: 'QQQM', label: 'QQQM', name: 'Invesco NASDAQ 100 ETF', type: 'etf', symbol: 'QQQM', tvTicker: 'NASDAQ:QQQM' },
@@ -1493,6 +1593,89 @@ async function fetchMarketBenchmarks(market = 'TH', targetDate = '', isHistorica
 }
 
 /**
+ * Build Aggregate Sector Flow and Multi-Timeframe Money Rotation Heatmap
+ */
+function buildSectorFlow(stocks) {
+  const map = {};
+  stocks.forEach(s => {
+    const sec = s.sector || 'General';
+    if (!map[sec]) {
+      map[sec] = { sector: sec, totalValue: 0, sumChange: 0, count: 0 };
+    }
+    map[sec].totalValue += (s.valueTraded || 0);
+    map[sec].sumChange += (s.changePct || 0);
+    map[sec].count += 1;
+  });
+  return Object.values(map)
+    .map(sec => ({
+      sector: sec.sector,
+      totalValue: sec.totalValue,
+      avgChange: sec.count > 0 ? Math.round((sec.sumChange / sec.count) * 100) / 100 : 0,
+      count: sec.count
+    }))
+    .sort((a, b) => b.avgChange - a.avgChange);
+}
+
+function buildSectorHeatmap(stocks) {
+  const map = {};
+  stocks.forEach(s => {
+    const sec = s.sector || 'General';
+    if (!map[sec]) {
+      map[sec] = {
+        sector: sec,
+        totalValue: 0,
+        count: 0,
+        timeframeSum: { '1D': 0, '1W': 0, '2W': 0, '3W': 0, '4W': 0 },
+        stocks: []
+      };
+    }
+    map[sec].totalValue += (s.valueTraded || 0);
+    map[sec].count += 1;
+    ['1D', '1W', '2W', '3W', '4W'].forEach(tf => {
+      const v = s.timeframeReturns?.[tf] ?? s.changePct ?? 0;
+      map[sec].timeframeSum[tf] += v;
+    });
+    map[sec].stocks.push(s);
+  });
+
+  return Object.values(map).map(sec => {
+    const avgReturns = {};
+    ['1D', '1W', '2W', '3W', '4W'].forEach(tf => {
+      avgReturns[tf] = sec.count > 0 ? Math.round((sec.timeframeSum[tf] / sec.count) * 100) / 100 : 0;
+    });
+
+    const sortedStocks = [...sec.stocks].sort((a, b) => (b.valueTraded || 0) - (a.valueTraded || 0));
+
+    return {
+      sector: sec.sector,
+      totalValue: sec.totalValue,
+      stockCount: sec.count,
+      avgReturns,
+      stocks: sortedStocks.map(s => ({
+        symbol: s.symbol,
+        name: s.name,
+        price: s.price,
+        changePct: s.changePct,
+        valueTraded: s.valueTraded,
+        rvol: s.rvol,
+        rsScore: s.rsScore,
+        compScore: s.compScore,
+        alpha: s.alpha,
+        outperforms: s.outperforms,
+        setupType: s.setupType,
+        timeframeReturns: s.timeframeReturns || {
+          '1D': s.changePct,
+          '1W': s.changePct,
+          '2W': s.changePct,
+          '3W': s.changePct,
+          '4W': s.changePct
+        }
+      }))
+    };
+  }).sort((a, b) => b.totalValue - a.totalValue);
+}
+
+/**
  * Handle scan request (Thai vs US, Live vs Historical)
  */
 async function handleScan(req, res, parsedUrl) {
@@ -1614,8 +1797,8 @@ async function handleScan(req, res, parsedUrl) {
           const perf1M = Math.round((d[23] || 0) * 100) / 100;
           const perf3M = Math.round((d[24] || 0) * 100) / 100;
           const perf6M = Math.round((d[25] || 0) * 100) / 100;
-          const sector = d[26] || 'General';
-          const industry = d[27] || 'General';
+          const sector = getSectorForStock(symbol, d[26] || 'General');
+          const industry = d[27] || sector;
           const exchange = d[28] || (market === 'TH' ? 'SET' : 'NASDAQ');
 
           if (changePct > 0) advancers++;
@@ -1658,6 +1841,18 @@ async function handleScan(req, res, parsedUrl) {
           const volPctOf50D = Math.round(rvol * 100);
           const range5DPct = Math.min(dayRangePct * 1.5, Math.abs(perfW));
           const alpha = Math.round((changePct - (primaryBench.changePct || 0)) * 100) / 100;
+          const ret1D = changePct;
+          const ret1W = Math.round((perfW || 0) * 100) / 100;
+          const ret4W = Math.round((perf1M || 0) * 100) / 100;
+          const ret2W = Math.round((ret1W + (ret4W - ret1W) * 0.35) * 100) / 100;
+          const ret3W = Math.round((ret1W + (ret4W - ret1W) * 0.68) * 100) / 100;
+          const timeframeReturns = {
+            '1D': ret1D,
+            '1W': ret1W,
+            '2W': ret2W,
+            '3W': ret3W,
+            '4W': ret4W
+          };
 
           // Real RS Relative Strength Score
           let rsScore = 50;
@@ -1807,7 +2002,8 @@ async function handleScan(req, res, parsedUrl) {
             isHistorical: false,
             alpha,
             outperforms: alpha > 0,
-            benchmarkName: primaryBench.label
+            benchmarkName: primaryBench.label,
+            timeframeReturns
           });
         }
 
@@ -1819,15 +2015,9 @@ async function handleScan(req, res, parsedUrl) {
           filteredStocks = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(preset));
         }
 
-        // Sector Flow
-        const sectorFlow = Object.values(sectorMap)
-          .map(sec => ({
-            sector: sec.sector,
-            totalValue: sec.totalValue,
-            avgChange: sec.count > 0 ? Math.round((sec.sumChange / sec.count) * 100) / 100 : 0,
-            count: sec.count
-          }))
-          .sort((a, b) => b.avgChange - a.avgChange);
+        // Sector Flow & Heatmap
+        const sectorFlow = buildSectorFlow(processedStocks);
+        const heatmap = buildSectorHeatmap(processedStocks);
 
         // Preset Counts
         const presetCounts = { ALL: processedStocks.length };
@@ -1956,6 +2146,7 @@ async function handleScan(req, res, parsedUrl) {
             presetCounts
           },
           sectorFlow,
+          heatmap,
           portfolioSim,
           stocks: filteredStocks
         }));
@@ -2018,6 +2209,23 @@ async function handleScan(req, res, parsedUrl) {
               const volume = cTarget.volume;
               const changePct = (cPrev && cPrev.close > 0) ? Math.round(((close - cPrev.close) / cPrev.close) * 10000) / 100 : 0;
               const valueTraded = Math.round(close * volume);
+
+              // Multi-Timeframe Money Rotation Returns (1D, 1W, 2W, 3W, 4W)
+              const c1W = targetIdx >= 5 ? candles[targetIdx - 5] : cPrev;
+              const ret1W = (c1W && c1W.close > 0) ? Math.round(((close - c1W.close) / c1W.close) * 10000) / 100 : changePct;
+              const c2W = targetIdx >= 10 ? candles[targetIdx - 10] : c1W;
+              const ret2W = (c2W && c2W.close > 0) ? Math.round(((close - c2W.close) / c2W.close) * 10000) / 100 : ret1W;
+              const c3W = targetIdx >= 15 ? candles[targetIdx - 15] : c2W;
+              const ret3W = (c3W && c3W.close > 0) ? Math.round(((close - c3W.close) / c3W.close) * 10000) / 100 : ret2W;
+              const c4W = targetIdx >= 20 ? candles[targetIdx - 20] : c3W;
+              const ret4W = (c4W && c4W.close > 0) ? Math.round(((close - c4W.close) / c4W.close) * 10000) / 100 : ret3W;
+              const timeframeReturns = {
+                '1D': changePct,
+                '1W': ret1W,
+                '2W': ret2W,
+                '3W': ret3W,
+                '4W': ret4W
+              };
 
               if (changePct > 0) advancers++;
               else if (changePct < 0) decliners++;
@@ -2238,7 +2446,8 @@ async function handleScan(req, res, parsedUrl) {
                 ema5, ema10, ema20, ema50,
                 dayRangePct,
                 distEma20,
-                sector: 'General',
+                sector: getSectorForStock(sym, ''),
+                timeframeReturns,
                 rsScore: isUptrend ? 75 : 50,
                 compScore,
                 setupType: primarySetup,
@@ -2429,6 +2638,8 @@ async function handleScan(req, res, parsedUrl) {
             advancers, decliners, unchanged,
             marketSentiment: advancers > decliners * 1.5 ? 'BULLISH' : decliners > advancers * 1.5 ? 'BEARISH' : 'NEUTRAL'
           },
+          sectorFlow: buildSectorFlow(processedStocks),
+          heatmap: buildSectorHeatmap(processedStocks),
           portfolioSim,
           stocks: filteredStocks
         }));
