@@ -1,0 +1,12 @@
+﻿{
+  "name": "thai-stock-scanner-pro",
+  "version": "8.5.0",
+  "description": "Thai & US Stock Scanner Pro - Master-Trader Real-Time Strategy Engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
