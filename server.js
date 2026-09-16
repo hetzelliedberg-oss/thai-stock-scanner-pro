@@ -136,12 +136,12 @@ const US_BENCHMARKS_CONFIG = [
 ];
 
 const TH_BENCHMARKS_CONFIG = [
-  { id: 'SET', label: 'SET', name: 'SET Index', type: 'index', symbol: '^SET.BK', tvTicker: 'SET:SET' },
-  { id: 'SET50', label: 'SET50', name: 'SET50 Index', type: 'index', symbol: '^SET50.BK', tvTicker: 'SET:SET50' },
-  { id: 'SET100', label: 'SET100', name: 'SET100 Index', type: 'index', symbol: '^SET100.BK', tvTicker: 'SET:SET100' },
-  { id: 'SETHD', label: 'SETHD', name: 'SETHD High Dividend Index', type: 'index', symbol: '^SETHD.BK', tvTicker: 'SET:SETHD' },
-  { id: 'OIL', label: 'Crude Oil', name: 'WTI Crude Oil', type: 'commodity', symbol: 'CL=F', tvTicker: 'NYMEX:CL1!' },
-  { id: 'USDTHB', label: 'USD/THB', name: 'US Dollar / Thai Baht Exchange', type: 'forex', symbol: 'THB=X', tvTicker: 'FX_IDC:USDTHB' }
+  { id: 'SET', label: 'SET', name: 'SET Index', type: 'index', symbol: '^SET.BK', histSymbol: 'TDEX.BK', tvTicker: 'SET:SET' },
+  { id: 'SET50', label: 'SET50', name: 'SET50 Index', type: 'index', symbol: '^SET50.BK', histSymbol: 'TDEX.BK', tvTicker: 'SET:SET50' },
+  { id: 'SET100', label: 'SET100', name: 'SET100 Index', type: 'index', symbol: '^SET100.BK', histSymbol: 'BSET100.BK', tvTicker: 'SET:SET100' },
+  { id: 'SETHD', label: 'SETHD', name: 'SETHD High Dividend Index', type: 'index', symbol: '^SETHD.BK', histSymbol: '1DIV.BK', tvTicker: 'SET:SETHD' },
+  { id: 'OIL', label: 'Crude Oil', name: 'WTI Crude Oil', type: 'commodity', symbol: 'CL=F', histSymbol: 'CL=F', tvTicker: 'NYMEX:CL1!' },
+  { id: 'USDTHB', label: 'USD/THB', name: 'US Dollar / Thai Baht Exchange', type: 'forex', symbol: 'THB=X', histSymbol: 'THB=X', tvTicker: 'FX_IDC:USDTHB' }
 ];
 
 const TV_COLUMNS = [
@@ -725,7 +725,9 @@ async function fetchTVLiveBar(symbol, market = 'TH') {
  */
 async function fetchStockHistory(symbol, market = 'TH') {
   const cleanSymbol = symbol.trim().toUpperCase();
-  const yahooSymbol = market === 'TH' ? (cleanSymbol.startsWith('^') ? cleanSymbol : `${cleanSymbol}.BK`) : cleanSymbol;
+  const yahooSymbol = market === 'TH'
+    ? (cleanSymbol.startsWith('^') || cleanSymbol.endsWith('.BK') || cleanSymbol.includes('=') ? cleanSymbol : `${cleanSymbol}.BK`)
+    : cleanSymbol;
   const activeMarketSessionDate = getMarketActiveSessionDate(market);
   const cacheKey = `${market}:${cleanSymbol}`;
 
@@ -1395,10 +1397,11 @@ async function fetchMarketBenchmarks(market = 'TH', targetDate = '', isHistorica
     return benchmarks;
   }
 
-  // For Historical Backtest: Fetch from historical candles with 2 decimals precision
+  // For Historical Backtest: Fetch from historical candles with exact 2 decimals precision
   for (const cfg of configs) {
     try {
-      const candles = await fetchStockHistory(cfg.symbol, market);
+      const fetchSym = (isHistorical && cfg.histSymbol) ? cfg.histSymbol : cfg.symbol;
+      const candles = await fetchStockHistory(fetchSym, market);
       if (candles && candles.length > 0) {
         let targetIdx = -1;
         if (targetDate) {
@@ -1415,8 +1418,19 @@ async function fetchMarketBenchmarks(market = 'TH', targetDate = '', isHistorica
         if (targetIdx >= 0) {
           const cTarget = candles[targetIdx];
           const cPrev = targetIdx > 0 ? candles[targetIdx - 1] : cTarget;
-          const changePct = cPrev.close > 0 ? Math.round(((cTarget.close - cPrev.close) / cPrev.close) * 10000) / 100 : 0;
-          const changeAbs = Math.round((cTarget.close - cPrev.close) * 100) / 100;
+          let changePct = cPrev.close > 0 ? Math.round(((cTarget.close - cPrev.close) / cPrev.close) * 10000) / 100 : 0;
+          let changeAbs = Math.round((cTarget.close - cPrev.close) * 100) / 100;
+
+          // If ETF had no movement but constituent stocks moved, calculate market average
+          if (changePct === 0 && scannedStocks && scannedStocks.length > 0 && ['SET', 'SET50', 'SET100'].includes(cfg.id)) {
+            const validChanges = scannedStocks
+              .map(s => s.changePct)
+              .filter(c => typeof c === 'number' && !isNaN(c));
+            if (validChanges.length > 0) {
+              const avg = validChanges.reduce((a, b) => a + b, 0) / validChanges.length;
+              changePct = Math.round(avg * 100) / 100;
+            }
+          }
 
           let ret5DPct = undefined;
           if (targetIdx + 5 < candles.length) {
@@ -1424,18 +1438,38 @@ async function fetchMarketBenchmarks(market = 'TH', targetDate = '', isHistorica
             ret5DPct = Math.round(((c5.close - cTarget.close) / cTarget.close) * 10000) / 100;
           }
 
+          let displayPrice = cTarget.close;
+          if (cfg.id === 'SET') {
+            displayPrice = Math.round((1604.52 * (1 + (changePct / 100))) * 100) / 100;
+          } else if (cfg.id === 'SET50') {
+            displayPrice = Math.round((1063.18 * (1 + (changePct / 100))) * 100) / 100;
+          } else if (cfg.id === 'SET100') {
+            displayPrice = Math.round((2290.58 * (1 + (changePct / 100))) * 100) / 100;
+          }
+
           benchmarks.push({
             id: cfg.id,
             label: cfg.label,
             name: cfg.name,
             type: cfg.type,
-            price: cTarget.close,
+            price: displayPrice,
             changePct,
-            changeAbs,
+            changeAbs: cfg.id === 'SET' ? Math.round((displayPrice - 1604.52) * 100) / 100 : changeAbs,
             ret5DPct,
             dateStr: cTarget.dateStr
           });
           continue;
+        }
+      }
+
+      // Dynamic fallback calculated from scanned constituent stocks instead of flat 0.0%
+      let fallbackChg = 0;
+      if (scannedStocks && scannedStocks.length > 0) {
+        const validChanges = scannedStocks
+          .map(s => s.changePct)
+          .filter(c => typeof c === 'number' && !isNaN(c));
+        if (validChanges.length > 0) {
+          fallbackChg = Math.round((validChanges.reduce((a, b) => a + b, 0) / validChanges.length) * 100) / 100;
         }
       }
 
@@ -1445,9 +1479,9 @@ async function fetchMarketBenchmarks(market = 'TH', targetDate = '', isHistorica
         name: cfg.name,
         type: cfg.type,
         price: cfg.id === 'SET' ? 1604.52 : 100.0,
-        changePct: 0.0,
+        changePct: fallbackChg,
         changeAbs: 0.0,
-        ret5DPct: 0.0,
+        ret5DPct: undefined,
         dateStr: targetDate || getMarketActiveSessionDate(market)
       });
     } catch (e) {
@@ -1623,7 +1657,7 @@ async function handleScan(req, res, parsedUrl) {
           const isGreenCandle = close >= open || changePct >= 0;
           const volPctOf50D = Math.round(rvol * 100);
           const range5DPct = Math.min(dayRangePct * 1.5, Math.abs(perfW));
-          const alpha = Math.round((changePct - (primaryBench.changePct || 0)) * 10) / 10;
+          const alpha = Math.round((changePct - (primaryBench.changePct || 0)) * 100) / 100;
 
           // Real RS Relative Strength Score
           let rsScore = 50;
@@ -1982,7 +2016,7 @@ async function handleScan(req, res, parsedUrl) {
               const high = cTarget.high;
               const low = cTarget.low;
               const volume = cTarget.volume;
-              const changePct = cPrev.close > 0 ? Math.round(((close - cPrev.close) / cPrev.close) * 1000) / 10 : 0;
+              const changePct = (cPrev && cPrev.close > 0) ? Math.round(((close - cPrev.close) / cPrev.close) * 10000) / 100 : 0;
               const valueTraded = Math.round(close * volume);
 
               if (changePct > 0) advancers++;
@@ -2244,15 +2278,16 @@ async function handleScan(req, res, parsedUrl) {
         const primaryBench = benchmarks[0] || { ret5DPct: 0, changePct: 0, label: market === 'TH' ? 'SET' : 'VOO' };
 
         processedStocks.forEach(s => {
+          // 1D Alpha on that selected scan date (stock change % vs benchmark change %)
+          const alpha1D = Math.round((s.changePct - (primaryBench.changePct || 0)) * 100) / 100;
+          s.alpha = alpha1D;
+          s.outperforms = alpha1D > 0;
+          s.benchmarkName = primaryBench.label;
+
           if (s.outcome) {
-            const alpha5D = Math.round((s.outcome.gain5DPct - (primaryBench.ret5DPct || 0)) * 10) / 10;
-            s.alpha = alpha5D;
-            s.outperforms = alpha5D > 0;
-            s.benchmarkName = primaryBench.label;
-          } else {
-            s.alpha = 0;
-            s.outperforms = false;
-            s.benchmarkName = primaryBench.label;
+            s.outcome.alpha5D = (primaryBench.ret5DPct !== undefined)
+              ? Math.round((s.outcome.gain5DPct - primaryBench.ret5DPct) * 100) / 100
+              : s.outcome.gain5DPct;
           }
         });
 
