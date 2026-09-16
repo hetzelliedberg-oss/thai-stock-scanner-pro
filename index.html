@@ -218,6 +218,10 @@
       const [heatmapTimeframe, setHeatmapTimeframe] = useState('1D'); // '1D' | '1W' | '2W' | '3W' | '4W'
       const [heatmapData, setHeatmapData] = useState([]);
 
+      // Intraday EMA Trend Zone State (H1 / H2 / H4)
+      const [intradayFilter, setIntradayFilter] = useState('ALL'); 
+      // 'ALL' | 'WINNER_IN_ZONE' | 'TRIPLE' | 'H1_BULL' | 'H2_BULL' | 'H4_BULL' | 'H1_20' | 'H1_50' | 'H1_200' | 'H2_20' | 'H2_50' | 'H2_200' | 'H4_20' | 'H4_50' | 'H4_200'
+
       // Table Column Sorting State
       const [sortColumn, setSortColumn] = useState('score');
       const [sortDirection, setSortDirection] = useState('desc');
@@ -371,7 +375,33 @@
         return counts;
       }, [allScannedStocks]);
 
-      // Filtered & Sorted Stocks by Preset, Sector, Search Query, and Sort Column
+      // Intraday Zone Counts (H1 / H2 / H4)
+      const intradayCounts = useMemo(() => {
+        const counts = {
+          ALL: allScannedStocks.length,
+          WINNER_IN_ZONE: 0,
+          TRIPLE: 0,
+          H1_BULL: 0,
+          H2_BULL: 0,
+          H4_BULL: 0
+        };
+        allScannedStocks.forEach(s => {
+          const ie = s.intradayEma;
+          if (!ie) return;
+          if (ie.isWinnerInZone || (s.outperforms && (ie.h1?.aboveAll || ie.h2?.aboveAll || ie.h4?.aboveAll))) {
+            counts.WINNER_IN_ZONE++;
+          }
+          if (ie.tripleConfluence || (ie.h1?.aboveAll && ie.h2?.aboveAll && ie.h4?.aboveAll)) {
+            counts.TRIPLE++;
+          }
+          if (ie.h1?.aboveAll) counts.H1_BULL++;
+          if (ie.h2?.aboveAll) counts.H2_BULL++;
+          if (ie.h4?.aboveAll) counts.H4_BULL++;
+        });
+        return counts;
+      }, [allScannedStocks]);
+
+      // Filtered & Sorted Stocks by Preset, Sector, Intraday Zone, Search Query, and Sort Column
       const displayedStocks = useMemo(() => {
         let list = [...allScannedStocks];
 
@@ -381,6 +411,46 @@
 
         if (selectedSector !== 'ALL') {
           list = list.filter(s => s.sector === selectedSector);
+        }
+
+        // Intraday EMA Trend Zone filter (H1 / H2 / H4)
+        if (intradayFilter !== 'ALL') {
+          list = list.filter(s => {
+            const ie = s.intradayEma;
+            if (!ie) return false;
+            switch (intradayFilter) {
+              case 'WINNER_IN_ZONE':
+                return ie.isWinnerInZone || (s.outperforms && (ie.h1?.aboveAll || ie.h2?.aboveAll || ie.h4?.aboveAll));
+              case 'TRIPLE':
+                return ie.tripleConfluence || (ie.h1?.aboveAll && ie.h2?.aboveAll && ie.h4?.aboveAll);
+              case 'H1_BULL':
+                return ie.h1?.aboveAll;
+              case 'H2_BULL':
+                return ie.h2?.aboveAll;
+              case 'H4_BULL':
+                return ie.h4?.aboveAll;
+              case 'H1_20':
+                return ie.h1?.above20;
+              case 'H1_50':
+                return ie.h1?.above50;
+              case 'H1_200':
+                return ie.h1?.above200;
+              case 'H2_20':
+                return ie.h2?.above20;
+              case 'H2_50':
+                return ie.h2?.above50;
+              case 'H2_200':
+                return ie.h2?.above200;
+              case 'H4_20':
+                return ie.h4?.above20;
+              case 'H4_50':
+                return ie.h4?.above50;
+              case 'H4_200':
+                return ie.h4?.above200;
+              default:
+                return true;
+            }
+          });
         }
 
         if (searchQuery.trim()) {
@@ -420,6 +490,10 @@
               valA = a.rsScore ?? 0;
               valB = b.rsScore ?? 0;
               break;
+            case 'intraday':
+              valA = (a.intradayEma?.tripleConfluence ? 10 : 0) + (a.intradayEma?.isWinnerInZone ? 5 : 0) + (a.intradayEma?.h1?.aboveAll ? 2 : 0) + (a.intradayEma?.h2?.aboveAll ? 2 : 0) + (a.intradayEma?.h4?.aboveAll ? 2 : 0);
+              valB = (b.intradayEma?.tripleConfluence ? 10 : 0) + (b.intradayEma?.isWinnerInZone ? 5 : 0) + (b.intradayEma?.h1?.aboveAll ? 2 : 0) + (b.intradayEma?.h2?.aboveAll ? 2 : 0) + (b.intradayEma?.h4?.aboveAll ? 2 : 0);
+              break;
             default:
               valA = a.compScore ?? 0;
               valB = b.compScore ?? 0;
@@ -428,7 +502,7 @@
         });
 
         return list;
-      }, [allScannedStocks, selectedPreset, selectedSector, searchQuery, sortColumn, sortDirection]);
+      }, [allScannedStocks, selectedPreset, selectedSector, intradayFilter, searchQuery, sortColumn, sortDirection]);
 
       // Initial scan
       useEffect(() => {
@@ -969,6 +1043,136 @@
               </div>
             </div>
 
+            {/* Intraday EMA Trend Zone (H1 / H2 / H4) Filter Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-dark-800">
+              <span className="text-xs font-bold text-slate-400 mr-1 flex items-center space-x-1">
+                <span>⏱️</span>
+                <span>โซนแท่งเทียน EMA:</span>
+              </span>
+
+              <button
+                onClick={() => setIntradayFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'ALL'
+                    ? 'bg-slate-700 text-white border-slate-500 shadow-md ring-2 ring-slate-400/30'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-slate-400 border-dark-700'
+                }`}
+              >
+                <span>🌐 ทั้งหมด</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold bg-dark-950 text-slate-400">
+                  {intradayCounts.ALL}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setIntradayFilter('WINNER_IN_ZONE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'WINNER_IN_ZONE'
+                    ? 'bg-gradient-to-r from-amber-600 to-emerald-600 text-white border-amber-400 shadow-lg shadow-amber-600/30 ring-2 ring-amber-400/40'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                }`}
+                title="กรองเฉพาะหุ้นที่ชนะตลาด (Alpha > 0) และปิดแท่งเทียนยืนเหนือ EMA 20, 50, 200 ในโซน Intraday"
+              >
+                <span>🏆 ชนะตลาด & ยืนโซน EMA</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  intradayFilter === 'WINNER_IN_ZONE' ? 'bg-white/25 text-white' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {intradayCounts.WINNER_IN_ZONE}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setIntradayFilter('TRIPLE')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'TRIPLE'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400 shadow-lg shadow-purple-600/30 ring-2 ring-purple-400/40'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-purple-300 border-purple-500/40 hover:border-purple-400'
+                }`}
+                title="กรองเฉพาะหุ้นที่ปิดเหนือ EMA 20, 50, 200 ครบทั้ง 3 Timeframe (H1 + H2 + H4 Triple Confluence)"
+              >
+                <span>👑 Triple Bull (H1+H2+H4)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  intradayFilter === 'TRIPLE' ? 'bg-white/25 text-white' : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                }`}>
+                  {intradayCounts.TRIPLE}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setIntradayFilter('H1_BULL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'H1_BULL'
+                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/40'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-emerald-400 border-emerald-500/30 hover:border-emerald-400'
+                }`}
+                title="กรองเฉพาะหุ้นที่ปิดเหนือ EMA 20, 50, 200 ใน Timeframe H1 (60 นาที)"
+              >
+                <span>🟢 H1 Bull Zone (60m)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  intradayFilter === 'H1_BULL' ? 'bg-white/25 text-white' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                }`}>
+                  {intradayCounts.H1_BULL}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setIntradayFilter('H2_BULL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'H2_BULL'
+                    ? 'bg-sky-600 text-white border-sky-400 shadow-lg shadow-sky-600/30 ring-2 ring-sky-400/40'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-sky-400 border-sky-500/30 hover:border-sky-400'
+                }`}
+                title="กรองเฉพาะหุ้นที่ปิดเหนือ EMA 20, 50, 200 ใน Timeframe H2 (120 นาที)"
+              >
+                <span>🔵 H2 Bull Zone (120m)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  intradayFilter === 'H2_BULL' ? 'bg-white/25 text-white' : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                }`}>
+                  {intradayCounts.H2_BULL}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setIntradayFilter('H4_BULL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                  intradayFilter === 'H4_BULL'
+                    ? 'bg-purple-600 text-white border-purple-400 shadow-lg shadow-purple-600/30 ring-2 ring-purple-400/40'
+                    : 'bg-dark-900/80 hover:bg-dark-850 text-purple-400 border-purple-500/30 hover:border-purple-400'
+                }`}
+                title="กรองเฉพาะหุ้นที่ปิดเหนือ EMA 20, 50, 200 ใน Timeframe H4 (240 นาที)"
+              >
+                <span>🟣 H4 Bull Zone (240m)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  intradayFilter === 'H4_BULL' ? 'bg-white/25 text-white' : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                }`}>
+                  {intradayCounts.H4_BULL}
+                </span>
+              </button>
+
+              {/* Dropdown for specific individual EMA checks */}
+              <div className="ml-auto flex items-center space-x-1.5">
+                <span className="text-[11px] text-slate-400">เลือกเส้นย่อย:</span>
+                <select
+                  value={['H1_20','H1_50','H1_200','H2_20','H2_50','H2_200','H4_20','H4_50','H4_200'].includes(intradayFilter) ? intradayFilter : ''}
+                  onChange={(e) => {
+                    if (e.target.value) setIntradayFilter(e.target.value);
+                  }}
+                  className="bg-dark-950 border border-dark-700 text-slate-300 text-[11px] rounded-xl px-2.5 py-1.5 outline-none focus:border-indigo-400 cursor-pointer"
+                >
+                  <option value="">-- เส้น EMA เดี่ยว --</option>
+                  <option value="H1_20">H1 ปิดเหนือ EMA 20</option>
+                  <option value="H1_50">H1 ปิดเหนือ EMA 50</option>
+                  <option value="H1_200">H1 ปิดเหนือ EMA 200</option>
+                  <option value="H2_20">H2 ปิดเหนือ EMA 20</option>
+                  <option value="H2_50">H2 ปิดเหนือ EMA 50</option>
+                  <option value="H2_200">H2 ปิดเหนือ EMA 200</option>
+                  <option value="H4_20">H4 ปิดเหนือ EMA 20</option>
+                  <option value="H4_50">H4 ปิดเหนือ EMA 50</option>
+                  <option value="H4_200">H4 ปิดเหนือ EMA 200</option>
+                </select>
+              </div>
+            </div>
+
             {/* Active Filters Summary Ribbon */}
             {selectedSector !== 'ALL' && (
               <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-xl px-3 py-2 flex items-center justify-between text-xs text-indigo-200">
@@ -1036,6 +1240,9 @@
                       </th>
                       <th className="px-3 py-3 border-l border-dark-800">แผนเทรด (Buy / SL / TP 1:2 / TP 1:3)</th>
                       <th className="px-3 py-3 border-l border-dark-800">Pattern Setup</th>
+                      <th onClick={() => handleSort('intraday')} className="px-3 py-3 text-center border-l border-dark-800 cursor-pointer select-none hover:text-white transition-colors" title="คลิกเพื่อเรียงตามความแข็งแกร่งของโซนแท่งเทียน H1, H2, H4 เหนือ EMA 20, 50, 200">
+                        โซนแท่งเทียน EMA (H1 / H2 / H4) {sortColumn === 'intraday' ? (sortDirection === 'desc' ? '▼' : '▲') : ''}
+                      </th>
                       {isHistoricalScan && (
                         <th className="px-4 py-3 text-center border-l border-amber-800/60 bg-amber-950/20 text-amber-300">
                           ผลลัพธ์จริงในอนาคต (2D / 5D / Peak)
@@ -1048,7 +1255,7 @@
                   <tbody className="divide-y divide-dark-800/60 font-sans">
                     {displayedStocks.length === 0 ? (
                       <tr>
-                        <td colSpan={isHistoricalScan ? 12 : 11} className="py-16 text-center text-slate-500">
+                        <td colSpan={isHistoricalScan ? 13 : 12} className="py-16 text-center text-slate-500">
                           <div className="flex flex-col items-center justify-center space-y-2">
                             <span className="text-3xl">🔍</span>
                             <span className="text-sm font-bold text-slate-400">
@@ -1256,6 +1463,72 @@
                                   );
                                 })()}
                               </div>
+                            </td>
+
+                            {/* Intraday EMA (H1 / H2 / H4) Status Badges */}
+                            <td className="px-3 py-3 text-center border-l border-dark-800 font-mono text-[11px]">
+                              {item.intradayEma ? (
+                                <div className="flex flex-col items-center space-y-1">
+                                  {/* Top Banner Ribbon: Triple Confluence or Winner in Zone */}
+                                  {item.intradayEma.tripleConfluence && (
+                                    <span className="px-2 py-0.5 rounded-md font-black text-[10px] bg-gradient-to-r from-purple-500/25 to-indigo-500/25 text-purple-300 border border-purple-500/40 shadow-sm whitespace-nowrap" title="ปิดเหนือ EMA 20, 50, 200 ครบทุก Timeframe (H1 + H2 + H4 Triple Bull)">
+                                      👑 Triple Confluence
+                                    </span>
+                                  )}
+                                  {!item.intradayEma.tripleConfluence && item.intradayEma.isWinnerInZone && (
+                                    <span className="px-2 py-0.5 rounded-md font-black text-[10px] bg-gradient-to-r from-amber-500/20 to-emerald-500/20 text-amber-300 border border-amber-500/40 shadow-sm whitespace-nowrap" title="ชนะตลาด (Alpha > 0) และยืนในโซน EMA ขาขึ้น">
+                                      🏆 Winner in Zone
+                                    </span>
+                                  )}
+
+                                  {/* Timeframes H1, H2, H4 Grid */}
+                                  <div className="grid grid-cols-3 gap-1 w-full max-w-[200px]">
+                                    {/* H1 */}
+                                    <div className={`px-1 py-0.5 rounded-lg border text-[10px] flex flex-col items-center ${
+                                      item.intradayEma.h1?.aboveAll
+                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                                        : item.intradayEma.h1?.above20
+                                        ? 'bg-dark-950 text-slate-300 border-dark-800'
+                                        : 'bg-dark-950/60 text-slate-500 border-dark-800'
+                                    }`} title={`H1 (60m): ราคาปิด=${item.intradayEma.h1?.close} | EMA20=${item.intradayEma.h1?.ema20} (${item.intradayEma.h1?.above20 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA50=${item.intradayEma.h1?.ema50} (${item.intradayEma.h1?.above50 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA200=${item.intradayEma.h1?.ema200} (${item.intradayEma.h1?.above200 ? 'เหนือ ✓' : 'ใต้ ✗'})`}>
+                                      <span className="font-bold text-[9px] font-sans">H1(60m)</span>
+                                      <span className="text-[9px] font-mono">
+                                        {item.intradayEma.h1?.aboveAll ? '⚡ Bull' : `${item.intradayEma.h1?.above20 ? '20✓' : '20✗'} ${item.intradayEma.h1?.above50 ? '50✓' : '50✗'} ${item.intradayEma.h1?.above200 ? '200✓' : '200✗'}`}
+                                      </span>
+                                    </div>
+
+                                    {/* H2 */}
+                                    <div className={`px-1 py-0.5 rounded-lg border text-[10px] flex flex-col items-center ${
+                                      item.intradayEma.h2?.aboveAll
+                                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
+                                        : item.intradayEma.h2?.above20
+                                        ? 'bg-dark-950 text-slate-300 border-dark-800'
+                                        : 'bg-dark-950/60 text-slate-500 border-dark-800'
+                                    }`} title={`H2 (120m): ราคาปิด=${item.intradayEma.h2?.close} | EMA20=${item.intradayEma.h2?.ema20} (${item.intradayEma.h2?.above20 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA50=${item.intradayEma.h2?.ema50} (${item.intradayEma.h2?.above50 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA200=${item.intradayEma.h2?.ema200} (${item.intradayEma.h2?.above200 ? 'เหนือ ✓' : 'ใต้ ✗'})`}>
+                                      <span className="font-bold text-[9px] font-sans">H2(120m)</span>
+                                      <span className="text-[9px] font-mono">
+                                        {item.intradayEma.h2?.aboveAll ? '⚡ Bull' : `${item.intradayEma.h2?.above20 ? '20✓' : '20✗'} ${item.intradayEma.h2?.above50 ? '50✓' : '50✗'} ${item.intradayEma.h2?.above200 ? '200✓' : '200✗'}`}
+                                      </span>
+                                    </div>
+
+                                    {/* H4 */}
+                                    <div className={`px-1 py-0.5 rounded-lg border text-[10px] flex flex-col items-center ${
+                                      item.intradayEma.h4?.aboveAll
+                                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40 font-bold'
+                                        : item.intradayEma.h4?.above20
+                                        ? 'bg-dark-950 text-slate-300 border-dark-800'
+                                        : 'bg-dark-950/60 text-slate-500 border-dark-800'
+                                    }`} title={`H4 (240m): ราคาปิด=${item.intradayEma.h4?.close} | EMA20=${item.intradayEma.h4?.ema20} (${item.intradayEma.h4?.above20 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA50=${item.intradayEma.h4?.ema50} (${item.intradayEma.h4?.above50 ? 'เหนือ ✓' : 'ใต้ ✗'}) | EMA200=${item.intradayEma.h4?.ema200} (${item.intradayEma.h4?.above200 ? 'เหนือ ✓' : 'ใต้ ✗'})`}>
+                                      <span className="font-bold text-[9px] font-sans">H4(240m)</span>
+                                      <span className="text-[9px] font-mono">
+                                        {item.intradayEma.h4?.aboveAll ? '⚡ Bull' : `${item.intradayEma.h4?.above20 ? '20✓' : '20✗'} ${item.intradayEma.h4?.above50 ? '50✓' : '50✗'} ${item.intradayEma.h4?.above200 ? '200✓' : '200✗'}`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 text-[10px]">-</span>
+                              )}
                             </td>
 
                             {/* POST-SCAN OUTCOME */}
@@ -1819,6 +2092,38 @@
                             <span>Vol: {stock.rvol ? `${stock.rvol.toFixed(1)}x` : '-'}</span>
                             <span className="text-purple-300 font-bold">RS: {stock.rsScore || '-'}</span>
                           </div>
+
+                          {/* Intraday EMA Zone Badge in Heatmap */}
+                          {stock.intradayEma && (
+                            <div className="pt-1 border-t border-dark-800/60 flex items-center justify-between text-[9px] font-mono">
+                              <span className="text-slate-500">EMA Zone:</span>
+                              {stock.intradayEma.tripleConfluence ? (
+                                <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
+                                  👑 H1-H4 Bull
+                                </span>
+                              ) : stock.intradayEma.isWinnerInZone ? (
+                                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                  🏆 In Zone
+                                </span>
+                              ) : stock.intradayEma.h1?.aboveAll ? (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                                  🟢 H1 Bull
+                                </span>
+                              ) : stock.intradayEma.h2?.aboveAll ? (
+                                <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
+                                  🔵 H2 Bull
+                                </span>
+                              ) : stock.intradayEma.h4?.aboveAll ? (
+                                <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
+                                  🟣 H4 Bull
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">
+                                  {stock.intradayEma.h1?.above20 ? 'H1:20✓' : 'EMA Mixed'}
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                         </div>
                       );
@@ -2956,6 +3261,100 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* INTRADAY EMA (H1 / H2 / H4) STATUS DASHBOARD CARD */}
+            {chartData && chartData.intradayEma && (
+              <div className="bg-dark-950 border border-indigo-500/30 rounded-2xl p-3.5 space-y-2.5 font-mono">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dark-800 pb-2 text-xs">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">⏱️</span>
+                    <span className="font-bold text-slate-200">
+                      สถานะแท่งเทียนในโซน EMA (H1 / H2 / H4) - {chartData.symbol}:
+                    </span>
+                    {chartData.intradayEma.tripleConfluence && (
+                      <span className="px-2.5 py-0.5 rounded-full font-black text-[10px] bg-gradient-to-r from-purple-500/25 to-indigo-500/25 text-purple-300 border border-purple-500/40 animate-pulse">
+                        👑 Triple Confluence Bull
+                      </span>
+                    )}
+                    {!chartData.intradayEma.tripleConfluence && chartData.intradayEma.inAnyZone && (
+                      <span className="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        ⚡ In Bull Zone
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] text-slate-400">
+                    เกณฑ์: ราคาปิด &gt; EMA 20, 50, 200 ในแต่ละ Timeframe
+                  </div>
+                </div>
+
+                {/* 3 Columns: H1 (60m), H2 (120m), H4 (240m) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { id: 'h1', label: 'H1 (60 นาที)', color: 'emerald', data: chartData.intradayEma.h1 },
+                    { id: 'h2', label: 'H2 (120 นาที)', color: 'sky', data: chartData.intradayEma.h2 },
+                    { id: 'h4', label: 'H4 (240 นาที)', color: 'purple', data: chartData.intradayEma.h4 }
+                  ].map(tf => {
+                    const d = tf.data;
+                    if (!d) return null;
+                    return (
+                      <div key={tf.id} className="bg-dark-900/90 border border-dark-800 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between border-b border-dark-800/80 pb-1.5">
+                          <span className="text-xs font-bold text-slate-200">{tf.label}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            d.aboveAll
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : d.above20
+                              ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          }`}>
+                            {d.aboveAll ? '🟢 Bull Zone (เหนือ 20/50/200)' : d.above20 ? '🟡 เหนือ EMA20' : '🔴 ใต้เส้น EMA'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs flex items-baseline justify-between">
+                          <span className="text-slate-400">ราคาแท่งปิด:</span>
+                          <span className="font-bold text-white text-sm">{currency}{d.close?.toFixed(2)}</span>
+                        </div>
+
+                        {/* EMA 20, 50, 200 comparison breakdown */}
+                        <div className="space-y-1 text-[11px] pt-1">
+                          <div className="flex items-center justify-between bg-dark-950 px-2 py-1 rounded">
+                            <span className="text-sky-400 font-bold">EMA 20:</span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-slate-300">{currency}{d.ema20?.toFixed(2)}</span>
+                              <span className={`font-bold ${d.above20 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {d.diff20Pct > 0 ? '+' : ''}{d.diff20Pct}% {d.above20 ? '✓' : '✗'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between bg-dark-950 px-2 py-1 rounded">
+                            <span className="text-purple-400 font-bold">EMA 50:</span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-slate-300">{currency}{d.ema50?.toFixed(2)}</span>
+                              <span className={`font-bold ${d.above50 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {d.diff50Pct > 0 ? '+' : ''}{d.diff50Pct}% {d.above50 ? '✓' : '✗'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between bg-dark-950 px-2 py-1 rounded">
+                            <span className="text-amber-400 font-bold">EMA 200:</span>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-slate-300">{currency}{d.ema200?.toFixed(2)}</span>
+                              <span className={`font-bold ${d.above200 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {d.diff200Pct > 0 ? '+' : ''}{d.diff200Pct}% {d.above200 ? '✓' : '✗'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

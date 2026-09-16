@@ -251,7 +251,11 @@ const TV_COLUMNS = [
   "RSI", "MACD.macd", "MACD.signal", "MACD.hist",
   "price_52_week_high", "price_52_week_low",
   "Perf.W", "Perf.1M", "Perf.3M", "Perf.6M",
-  "sector", "industry", "exchange", "type"
+  "sector", "industry", "exchange", "type",
+  // Intraday H1 (60m), H2 (120m), H4 (240m)
+  "close|60", "EMA20|60", "EMA50|60", "EMA200|60",
+  "close|120", "EMA20|120", "EMA50|120", "EMA200|120",
+  "close|240", "EMA20|240", "EMA50|240", "EMA200|240"
 ];
 
 const MIME_TYPES = {
@@ -1669,7 +1673,8 @@ function buildSectorHeatmap(stocks) {
           '2W': s.changePct,
           '3W': s.changePct,
           '4W': s.changePct
-        }
+        },
+        intradayEma: s.intradayEma
       }))
     };
   }).sort((a, b) => b.totalValue - a.totalValue);
@@ -1854,6 +1859,87 @@ async function handleScan(req, res, parsedUrl) {
             '4W': ret4W
           };
 
+          // Intraday H1 (60m), H2 (120m), H4 (240m) EMAs from Official TradingView Engine
+          const h1_close = Math.round((d[30] || close) * 100) / 100;
+          const h1_ema20 = Math.round((d[31] || close) * 100) / 100;
+          const h1_ema50 = Math.round((d[32] || close) * 100) / 100;
+          const h1_ema200 = Math.round((d[33] || close) * 100) / 100;
+
+          const h2_close = Math.round((d[34] || close) * 100) / 100;
+          const h2_ema20 = Math.round((d[35] || close) * 100) / 100;
+          const h2_ema50 = Math.round((d[36] || close) * 100) / 100;
+          const h2_ema200 = Math.round((d[37] || close) * 100) / 100;
+
+          const h4_close = Math.round((d[38] || close) * 100) / 100;
+          const h4_ema20 = Math.round((d[39] || close) * 100) / 100;
+          const h4_ema50 = Math.round((d[40] || close) * 100) / 100;
+          const h4_ema200 = Math.round((d[41] || close) * 100) / 100;
+
+          const h1_above20 = h1_close >= h1_ema20;
+          const h1_above50 = h1_close >= h1_ema50;
+          const h1_above200 = h1_close >= h1_ema200;
+          const h1_aboveAll = h1_above20 && h1_above50 && h1_above200;
+          const h1_cross20_50 = h1_ema20 >= h1_ema50;
+
+          const h2_above20 = h2_close >= h2_ema20;
+          const h2_above50 = h2_close >= h2_ema50;
+          const h2_above200 = h2_close >= h2_ema200;
+          const h2_aboveAll = h2_above20 && h2_above50 && h2_above200;
+          const h2_cross20_50 = h2_ema20 >= h2_ema50;
+
+          const h4_above20 = h4_close >= h4_ema20;
+          const h4_above50 = h4_close >= h4_ema50;
+          const h4_above200 = h4_close >= h4_ema200;
+          const h4_aboveAll = h4_above20 && h4_above50 && h4_above200;
+          const h4_cross20_50 = h4_ema20 >= h4_ema50;
+
+          const tripleConfluence = h1_aboveAll && h2_aboveAll && h4_aboveAll;
+          const outperforms = alpha > 0;
+          const isWinnerInZone = outperforms && (h1_aboveAll || h2_aboveAll || h4_aboveAll);
+          const isWinnerTripleConfluence = outperforms && tripleConfluence;
+
+          const intradayEma = {
+            h1: {
+              close: h1_close,
+              ema20: h1_ema20,
+              ema50: h1_ema50,
+              ema200: h1_ema200,
+              above20: h1_above20,
+              above50: h1_above50,
+              above200: h1_above200,
+              aboveAll: h1_aboveAll,
+              cross20_50: h1_cross20_50,
+              zoneStatus: h1_aboveAll ? 'BULL' : (h1_above20 ? 'PARTIAL' : 'BEAR')
+            },
+            h2: {
+              close: h2_close,
+              ema20: h2_ema20,
+              ema50: h2_ema50,
+              ema200: h2_ema200,
+              above20: h2_above20,
+              above50: h2_above50,
+              above200: h2_above200,
+              aboveAll: h2_aboveAll,
+              cross20_50: h2_cross20_50,
+              zoneStatus: h2_aboveAll ? 'BULL' : (h2_above20 ? 'PARTIAL' : 'BEAR')
+            },
+            h4: {
+              close: h4_close,
+              ema20: h4_ema20,
+              ema50: h4_ema50,
+              ema200: h4_ema200,
+              above20: h4_above20,
+              above50: h4_above50,
+              above200: h4_above200,
+              aboveAll: h4_aboveAll,
+              cross20_50: h4_cross20_50,
+              zoneStatus: h4_aboveAll ? 'BULL' : (h4_above20 ? 'PARTIAL' : 'BEAR')
+            },
+            tripleConfluence,
+            isWinnerInZone,
+            isWinnerTripleConfluence
+          };
+
           // Real RS Relative Strength Score
           let rsScore = 50;
           if (perf3M > 0) rsScore += 15;
@@ -1926,10 +2012,21 @@ async function handleScan(req, res, parsedUrl) {
           }
 
           const matchedPresets = ['ALL', primaryPreset];
+          if (h1_aboveAll) matchedPresets.push('H1_BULL');
+          if (h2_aboveAll) matchedPresets.push('H2_BULL');
+          if (h4_aboveAll) matchedPresets.push('H4_BULL');
+          if (tripleConfluence) matchedPresets.push('TRIPLE_CONFLUENCE');
+          if (isWinnerInZone) matchedPresets.push('WINNER_IN_ZONE');
+
           const matchedSetups = {
             ALL: { name: primarySetup, desc: primaryDesc },
             [primaryPreset]: { name: primarySetup, desc: primaryDesc }
           };
+          if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
+          if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
+          if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
+          if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
+          if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'ALPHA WINNER IN ZONE', desc: 'หุ้นชนะตลาด และยังยืนหยัดในโซน EMA แข็งแกร่ง' };
 
           // Smart Structural Trading Plan (Breathing Room + High Asymmetry R:R)
           const atrApprox = Math.max(high - low, close * 0.025);
@@ -2003,7 +2100,8 @@ async function handleScan(req, res, parsedUrl) {
             alpha,
             outperforms: alpha > 0,
             benchmarkName: primaryBench.label,
-            timeframeReturns
+            timeframeReturns,
+            intradayEma
           });
         }
 
@@ -2242,6 +2340,81 @@ async function handleScan(req, res, parsedUrl) {
               const ema20 = ema20Arr[targetIdx] ?? close;
               const ema50 = ema50Arr[targetIdx] ?? close;
 
+              // Intraday equivalent EMAs for H1, H2, H4 in Historical Mode
+              const h1_ema20 = calculateEMA(historicalCloses, market === 'TH' ? 4 : 3)[targetIdx] ?? close;
+              const h1_ema50 = calculateEMA(historicalCloses, market === 'TH' ? 11 : 8)[targetIdx] ?? close;
+              const h1_ema200 = calculateEMA(historicalCloses, market === 'TH' ? 44 : 31)[targetIdx] ?? close;
+
+              const h2_ema20 = calculateEMA(historicalCloses, market === 'TH' ? 9 : 6)[targetIdx] ?? close;
+              const h2_ema50 = calculateEMA(historicalCloses, market === 'TH' ? 23 : 15)[targetIdx] ?? close;
+              const h2_ema200 = calculateEMA(historicalCloses, market === 'TH' ? 90 : 62)[targetIdx] ?? close;
+
+              const h4_ema20 = calculateEMA(historicalCloses, market === 'TH' ? 18 : 12)[targetIdx] ?? close;
+              const h4_ema50 = calculateEMA(historicalCloses, market === 'TH' ? 45 : 31)[targetIdx] ?? close;
+              const h4_ema200 = calculateEMA(historicalCloses, market === 'TH' ? 180 : 123)[targetIdx] ?? close;
+
+              const h1_above20 = close >= h1_ema20;
+              const h1_above50 = close >= h1_ema50;
+              const h1_above200 = close >= h1_ema200;
+              const h1_aboveAll = h1_above20 && h1_above50 && h1_above200;
+              const h1_cross20_50 = h1_ema20 >= h1_ema50;
+
+              const h2_above20 = close >= h2_ema20;
+              const h2_above50 = close >= h2_ema50;
+              const h2_above200 = close >= h2_ema200;
+              const h2_aboveAll = h2_above20 && h2_above50 && h2_above200;
+              const h2_cross20_50 = h2_ema20 >= h2_ema50;
+
+              const h4_above20 = close >= h4_ema20;
+              const h4_above50 = close >= h4_ema50;
+              const h4_above200 = close >= h4_ema200;
+              const h4_aboveAll = h4_above20 && h4_above50 && h4_above200;
+              const h4_cross20_50 = h4_ema20 >= h4_ema50;
+
+              const tripleConfluence = h1_aboveAll && h2_aboveAll && h4_aboveAll;
+
+              const intradayEma = {
+                h1: {
+                  close,
+                  ema20: h1_ema20,
+                  ema50: h1_ema50,
+                  ema200: h1_ema200,
+                  above20: h1_above20,
+                  above50: h1_above50,
+                  above200: h1_above200,
+                  aboveAll: h1_aboveAll,
+                  cross20_50: h1_cross20_50,
+                  zoneStatus: h1_aboveAll ? 'BULL' : (h1_above20 ? 'PARTIAL' : 'BEAR')
+                },
+                h2: {
+                  close,
+                  ema20: h2_ema20,
+                  ema50: h2_ema50,
+                  ema200: h2_ema200,
+                  above20: h2_above20,
+                  above50: h2_above50,
+                  above200: h2_above200,
+                  aboveAll: h2_aboveAll,
+                  cross20_50: h2_cross20_50,
+                  zoneStatus: h2_aboveAll ? 'BULL' : (h2_above20 ? 'PARTIAL' : 'BEAR')
+                },
+                h4: {
+                  close,
+                  ema20: h4_ema20,
+                  ema50: h4_ema50,
+                  ema200: h4_ema200,
+                  above20: h4_above20,
+                  above50: h4_above50,
+                  above200: h4_above200,
+                  aboveAll: h4_aboveAll,
+                  cross20_50: h4_cross20_50,
+                  zoneStatus: h4_aboveAll ? 'BULL' : (h4_above20 ? 'PARTIAL' : 'BEAR')
+                },
+                tripleConfluence,
+                isWinnerInZone: false,
+                isWinnerTripleConfluence: false
+              };
+
               const past10Vols = candles.slice(Math.max(0, targetIdx - 10), targetIdx).map(c => c.volume);
               const avgVol10 = past10Vols.length > 0 ? past10Vols.reduce((a, b) => a + b, 0) / past10Vols.length : volume;
               const rvol = avgVol10 > 0 ? Math.round((volume / avgVol10) * 100) / 100 : 1;
@@ -2357,10 +2530,19 @@ async function handleScan(req, res, parsedUrl) {
               }
 
               const matchedPresets = ['ALL', primaryPreset];
+              if (h1_aboveAll) matchedPresets.push('H1_BULL');
+              if (h2_aboveAll) matchedPresets.push('H2_BULL');
+              if (h4_aboveAll) matchedPresets.push('H4_BULL');
+              if (tripleConfluence) matchedPresets.push('TRIPLE_CONFLUENCE');
+
               const matchedSetups = {
                 ALL: { name: primarySetup, desc: primaryDesc },
                 [primaryPreset]: { name: primarySetup, desc: primaryDesc }
               };
+              if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
+              if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
+              if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
+              if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
 
               // Day 1 to Day 5 Future Outcome Execution
               let outcome = null;
@@ -2469,7 +2651,8 @@ async function handleScan(req, res, parsedUrl) {
                 impactColor: catInfo.impactColor,
                 catalystSummary: catInfo.impactReason,
                 outcome,
-                isHistorical: true
+                isHistorical: true,
+                intradayEma
               });
             } catch (err) {
               // Ignore single error
@@ -2492,6 +2675,15 @@ async function handleScan(req, res, parsedUrl) {
           s.alpha = alpha1D;
           s.outperforms = alpha1D > 0;
           s.benchmarkName = primaryBench.label;
+
+          if (s.intradayEma) {
+            s.intradayEma.isWinnerInZone = s.outperforms && (s.intradayEma.h1.aboveAll || s.intradayEma.h2.aboveAll || s.intradayEma.h4.aboveAll);
+            s.intradayEma.isWinnerTripleConfluence = s.outperforms && s.intradayEma.tripleConfluence;
+            if (s.intradayEma.isWinnerInZone) {
+              s.matchedPresets.push('WINNER_IN_ZONE');
+              s.matchedSetups.WINNER_IN_ZONE = { name: 'ALPHA WINNER IN ZONE', desc: 'หุ้นชนะตลาด และยังยืนหยัดในโซน EMA แข็งแกร่ง' };
+            }
+          }
 
           if (s.outcome) {
             s.outcome.alpha5D = (primaryBench.ret5DPct !== undefined)
@@ -2758,6 +2950,48 @@ async function handleChart(req, res, symbol, parsedUrl) {
       }
     });
 
+    // Calculate Intraday EMA (H1, H2, H4) for this stock
+    const closeSeries = candles.slice(0, targetIndex + 1).map(c => c.close);
+    const lastClose = closeSeries[closeSeries.length - 1] || 0;
+    const h1E20 = calculateEMA(closeSeries, queryMarket === 'TH' ? 4 : 3).pop() || lastClose;
+    const h1E50 = calculateEMA(closeSeries, queryMarket === 'TH' ? 11 : 8).pop() || lastClose;
+    const h1E200 = calculateEMA(closeSeries, queryMarket === 'TH' ? 44 : 31).pop() || lastClose;
+
+    const h2E20 = calculateEMA(closeSeries, queryMarket === 'TH' ? 9 : 6).pop() || lastClose;
+    const h2E50 = calculateEMA(closeSeries, queryMarket === 'TH' ? 23 : 15).pop() || lastClose;
+    const h2E200 = calculateEMA(closeSeries, queryMarket === 'TH' ? 90 : 62).pop() || lastClose;
+
+    const h4E20 = calculateEMA(closeSeries, queryMarket === 'TH' ? 18 : 12).pop() || lastClose;
+    const h4E50 = calculateEMA(closeSeries, queryMarket === 'TH' ? 45 : 31).pop() || lastClose;
+    const h4E200 = calculateEMA(closeSeries, queryMarket === 'TH' ? 180 : 123).pop() || lastClose;
+
+    const buildTfObj = (c, e20, e50, e200) => ({
+      close: Math.round(c * 100) / 100,
+      ema20: Math.round(e20 * 100) / 100,
+      ema50: Math.round(e50 * 100) / 100,
+      ema200: Math.round(e200 * 100) / 100,
+      above20: c >= e20,
+      above50: c >= e50,
+      above200: c >= e200,
+      aboveAll: c >= e20 && c >= e50 && c >= e200,
+      cross20_50: e20 >= e50,
+      diff20Pct: Math.round(((c - e20) / e20) * 10000) / 100,
+      diff50Pct: Math.round(((c - e50) / e50) * 10000) / 100,
+      diff200Pct: Math.round(((c - e200) / e200) * 10000) / 100
+    });
+
+    const h1Obj = buildTfObj(lastClose, h1E20, h1E50, h1E200);
+    const h2Obj = buildTfObj(lastClose, h2E20, h2E50, h2E200);
+    const h4Obj = buildTfObj(lastClose, h4E20, h4E50, h4E200);
+
+    const intradayEma = {
+      h1: h1Obj,
+      h2: h2Obj,
+      h4: h4Obj,
+      tripleConfluence: h1Obj.aboveAll && h2Obj.aboveAll && h4Obj.aboveAll,
+      inAnyZone: h1Obj.aboveAll || h2Obj.aboveAll || h4Obj.aboveAll
+    };
+
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       success: true,
@@ -2770,6 +3004,7 @@ async function handleChart(req, res, symbol, parsedUrl) {
       isHistorical,
       candles,
       financials,
+      intradayEma,
       volumeProfile: {
         bins: volumeBins,
         poc,
