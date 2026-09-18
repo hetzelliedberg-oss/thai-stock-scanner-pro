@@ -1708,7 +1708,8 @@ async function handleScan(req, res, parsedUrl) {
       const sectorFilter = (params.sector || 'ALL').toUpperCase();
 
       const activeMarketSessionDate = getMarketActiveSessionDate(market);
-      const selectedDate = params.selectedDate ? params.selectedDate.trim() : activeMarketSessionDate;
+      const rawDateParam = params.selectedDate || params.date;
+      const selectedDate = rawDateParam ? rawDateParam.trim() : activeMarketSessionDate;
       const isHistorical = selectedDate < activeMarketSessionDate;
       const customSymbols = Array.isArray(params.customSymbols) ? params.customSymbols.map(s => s.trim().toUpperCase()) : [];
 
