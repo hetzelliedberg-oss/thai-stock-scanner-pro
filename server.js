@@ -1969,60 +1969,69 @@ async function handleScan(req, res, parsedUrl) {
           else if (dayRangePct <= 7.0) compScore += 8;
           compScore = Math.min(100, Math.max(0, compScore));
 
-          // Comprehensive Multi-Strategy Classification:
-          // Stocks can qualify for multiple setups simultaneously so strategy tabs (e.g. RS Monster, Breakout, VCP) display all qualifying stocks.
-          const isBreakout = isUptrend && (dist52WHigh >= -12 || close >= high52W * 0.95 || changePct >= 2.0) && (volPctOf50D >= 115 || rvol >= 1.15) && changePct > 0;
-          const isPocketPivot = isUptrend && range5DPct <= 8.5 && (volPctOf50D >= 105 || rvol >= 1.05) && isGreenCandle;
-          const isEma20Bounce = low <= ema20 * 1.025 && close >= ema20;
-          const isVcp = isUptrend && ((range5DPct <= 6.0 && volPctOf50D <= 120) || dayRangePct <= 4.0 || range5DPct <= 7.0);
-          const isRsLeader = (rsScore >= 65 || alpha > 0) && isUptrend && changePct >= 0;
-          const isMomentum = (close >= ema5 && ema5 >= ema20) || (close >= ema20 && isGreenCandle);
+          // Sharp Non-Overlapping Strategy Classification (น้อยแต่คม ไม่ซ้ำกลยุทธ์):
+          // 1. VOLUME BREAKOUT: High conviction volume breakout (>130% Vol, >1.5% price gain, near highs)
+          const isRealBreakout = isUptrend && dist52WHigh >= -10 && (rvol >= 1.3 || volPctOf50D >= 130) && changePct >= 1.5;
 
-          if (!isUptrend && !isBreakout && !isPocketPivot && !isEma20Bounce && !isVcp && !isRsLeader && !isMomentum) {
+          // 2. POCKET PIVOT: Institutional volume accumulation in tight base (Range <= 6.5%, Vol >= 120%)
+          const isRealPocketPivot = isUptrend && range5DPct <= 6.5 && (rvol >= 1.2 || volPctOf50D >= 120) && isGreenCandle && changePct >= 0.5;
+
+          // 3. RS LEADER: Pure Market Leader outperforming the index (RS Score >= 75 and Alpha >= 1.0%)
+          const isRealRsLeader = isUptrend && rsScore >= 75 && alpha >= 1.0 && changePct > 0;
+
+          // 4. EMA 20 BOUNCE: Tested EMA20 support directly (low within 1.0% of EMA20) and rebounded
+          const isRealEmaBounce = low <= ema20 * 1.01 && close >= ema20 * 1.005 && isGreenCandle;
+
+          // 5. VCP SQUEEZE: Minervini True VCP: Tight contraction (Range <= 4.5%) AND Volume Drying up (RVOL <= 0.85x)
+          const isRealVcp = isUptrend && range5DPct <= 4.5 && rvol <= 0.85 && dayRangePct <= 3.5;
+
+          // 6. MOMENTUM RISE: Moving averages aligned (Price > EMA5 > EMA20)
+          const isRealMomentum = close >= ema5 && ema5 >= ema20 && changePct >= 0;
+
+          let primaryPreset = null;
+          let primarySetup = '';
+          let primaryDesc = '';
+
+          if (isRealBreakout) {
+            primaryPreset = 'BREAKOUT';
+            primarySetup = 'VOLUME BREAKOUT';
+            primaryDesc = 'เบรคทะลุ High 20 วัน + โวลุ่มพีคหนุน (>130%)';
+          } else if (isRealPocketPivot) {
+            primaryPreset = 'POCKET_PIVOT';
+            primarySetup = 'POCKET PIVOT';
+            primaryDesc = 'ราคาทรงตัวในฐาน + มีเงินใหญ่แอบสะสม';
+          } else if (isRealRsLeader) {
+            primaryPreset = 'RS_LEADER';
+            primarySetup = 'RS LEADER';
+            primaryDesc = `หุ้นนำตลาดที่แข็งแกร่งกว่าดัชนี RS ${rsScore} (Alpha +${alpha}%)`;
+          } else if (isRealEmaBounce) {
+            primaryPreset = 'EMA20_BOUNCE';
+            primarySetup = 'EMA 20 BOUNCE';
+            primaryDesc = 'ย่อแตะแนวรับ EMA20 แล้วดึงกลับพยุงตัว';
+          } else if (isRealVcp) {
+            primaryPreset = 'VCP';
+            primarySetup = 'VCP / SQUEEZE';
+            primaryDesc = 'บีบตัวกรอบแคบมาก + โวลุ่มแห้งสนิท (<0.85x) รอกระชาก';
+          } else if (isRealMomentum) {
+            primaryPreset = 'MACD_MOMENTUM';
+            primarySetup = 'MACD MOMENTUM';
+            primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้นต่อเนื่อง ค่าเฉลี่ยเรียงตัวสวย';
+          } else if (isUptrend) {
+            primaryPreset = 'MACD_MOMENTUM';
+            primarySetup = 'MACD MOMENTUM';
+            primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
+          } else {
             continue;
           }
 
-          // Primary Setup (For single row badge display)
-          let primaryPreset = 'MACD_MOMENTUM';
-          let primarySetup = 'MACD MOMENTUM';
-          let primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
-
-          if (isBreakout) {
-            primaryPreset = 'BREAKOUT';
-            primarySetup = 'VOLUME BREAKOUT';
-            primaryDesc = 'เบรคทะลุ High 20 วัน + โวลุ่มพีค';
-          } else if (isPocketPivot) {
-            primaryPreset = 'POCKET_PIVOT';
-            primarySetup = 'POCKET PIVOT';
-            primaryDesc = 'ราคาทรงตัว + มีเงินใหญ่แอบเก็บ';
-          } else if (isEma20Bounce) {
-            primaryPreset = 'EMA20_BOUNCE';
-            primarySetup = 'EMA 20 BOUNCE';
-            primaryDesc = 'ย่อแตะแนวรับ 20D แล้วพยุงตัว';
-          } else if (isVcp) {
-            primaryPreset = 'VCP';
-            primarySetup = 'VCP / SQUEEZE';
-            primaryDesc = 'บีบตัวแน่น (<5.5%) + โวลุ่มเริ่มแห้ง รอกระชาก';
-          } else if (isRsLeader) {
-            primaryPreset = 'RS_LEADER';
-            primarySetup = 'RS LEADER';
-            primaryDesc = 'หุ้นผู้นำตลาดที่แข็งแกร่งกว่าดัชนี RS > 65';
-          }
-
           // Pure Scanner Entrant Definition (Strict Day 1 Crossover, Non-Repetitive):
-          // A stock is NEW on Day T if and only if it crossed above EMA20 today (was under EMA20 yesterday)
           const prevClose = changePct !== 0 ? (close / (1 + changePct / 100)) : close;
           const prevEma20 = (ema20 - (close * (2 / 21))) / (1 - (2 / 21));
           const wasInScannerYesterday = prevClose >= prevEma20;
-          const isNewEntrant = !wasInScannerYesterday && (close >= ema20) && (changePct > 0) && (distEma20 <= 5.0);
+          const isNewEntrant = !wasInScannerYesterday && (close >= ema20) && (changePct > 0) && (distEma20 <= 4.5);
 
-          const matchedPresets = ['ALL'];
-          if (isBreakout) matchedPresets.push('BREAKOUT');
-          if (isPocketPivot) matchedPresets.push('POCKET_PIVOT');
-          if (isEma20Bounce) matchedPresets.push('EMA20_BOUNCE');
-          if (isVcp) matchedPresets.push('VCP');
-          if (isRsLeader) matchedPresets.push('RS_LEADER');
-          if (isMomentum) matchedPresets.push('MACD_MOMENTUM');
+          // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
+          const matchedPresets = ['ALL', primaryPreset];
           if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
           if (h1_aboveAll) matchedPresets.push('H1_BULL');
           if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2032,17 +2041,14 @@ async function handleScan(req, res, parsedUrl) {
 
           const matchedSetups = {
             ALL: { name: primarySetup, desc: primaryDesc },
-            BREAKOUT: { name: 'VOLUME BREAKOUT', desc: 'เบรคทะลุ High 20 วัน + โวลุ่มพีค' },
-            POCKET_PIVOT: { name: 'POCKET PIVOT', desc: 'ราคาทรงตัว + มีเงินใหญ่แอบเก็บ' },
-            EMA20_BOUNCE: { name: 'EMA 20 BOUNCE', desc: 'ย่อแตะแนวรับ 20D แล้วพยุงตัว' },
-            VCP: { name: 'VCP / SQUEEZE', desc: 'บีบตัวแน่น (<5.5%) + โวลุ่มเริ่มแห้ง รอกระชาก' },
-            RS_LEADER: { name: 'RS LEADER', desc: `หุ้นผู้นำตลาดที่แข็งแกร่งกว่าดัชนี RS Score ${rsScore}` },
-            MACD_MOMENTUM: { name: 'MACD MOMENTUM', desc: 'หุ้นไต่เทรนด์ขาขึ้นต่อเนื่อง ค่าเฉลี่ยเรียงตัวสวย' }
+            [primaryPreset]: { name: primarySetup, desc: primaryDesc }
           };
-          if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 5%' };
+          if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
           if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
           if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
           if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
+          if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
+          if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'WINNER IN ZONE', desc: 'หุ้นชนะตลาดที่ยืนในโซน EMA ขาขึ้น' };
           if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
           if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'ALPHA WINNER IN ZONE', desc: 'หุ้นชนะตลาด และยังยืนหยัดในโซน EMA แข็งแกร่ง' };
 
@@ -2501,46 +2507,51 @@ async function handleScan(req, res, parsedUrl) {
               const rsScore = past40Close > 0 ? Math.min(99, Math.max(1, Math.round(50 + ((close - past40Close) / past40Close * 100)))) : 50;
 
               // Comprehensive Multi-Strategy Classification (Historical):
-              const isBreakout = isUptrend && close >= high20 && (volPctOf50D >= 115 || rvol >= 1.15) && changePct > 0;
-              const isPocketPivot = isUptrend && range5DPct <= 8.5 && (volPctOf50D >= 105 || rvol >= 1.05) && isGreenCandle;
-              const isEma20Bounce = low <= ema20 * 1.025 && close >= ema20;
-              const isVcp = isUptrend && ((range5DPct <= 6.0 && volPctOf50D <= 120) || dayRangePct <= 4.0 || range5DPct <= 7.0);
-              const isRsLeader = (rsScore >= 65 || changePct > 0) && isUptrend && changePct >= 0;
-              const isMomentum = (close >= ema5 && ema5 >= ema20) || (close >= ema20 && isGreenCandle);
+              // Sharp Non-Overlapping Strategy Classification (Historical):
+              const isRealBreakout = isUptrend && close >= high20 && (rvol >= 1.3 || volPctOf50D >= 130) && changePct >= 1.5;
+              const isRealPocketPivot = isUptrend && range5DPct <= 6.5 && (rvol >= 1.2 || volPctOf50D >= 120) && isGreenCandle && changePct >= 0.5;
+              const isRealRsLeader = isUptrend && rsScore >= 75 && changePct > 0;
+              const isRealEmaBounce = low <= ema20 * 1.01 && close >= ema20 * 1.005 && isGreenCandle;
+              const isRealVcp = isUptrend && range5DPct <= 4.5 && rvol <= 0.85 && dayRangePct <= 3.5;
+              const isRealMomentum = close >= ema5 && ema5 >= ema20 && changePct >= 0;
 
-              if (!isUptrend && !isBreakout && !isPocketPivot && !isEma20Bounce && !isVcp && !isRsLeader && !isMomentum) {
+              let primaryPreset = null;
+              let primarySetup = '';
+              let primaryDesc = '';
+
+              if (isRealBreakout) {
+                primaryPreset = 'BREAKOUT';
+                primarySetup = 'VOLUME BREAKOUT';
+                primaryDesc = 'เบรคทะลุ High 20 วัน + โวลุ่มพีคหนุน (>130%)';
+              } else if (isRealPocketPivot) {
+                primaryPreset = 'POCKET_PIVOT';
+                primarySetup = 'POCKET PIVOT';
+                primaryDesc = 'ราคาทรงตัวในฐาน + มีเงินใหญ่แอบสะสม';
+              } else if (isRealRsLeader) {
+                primaryPreset = 'RS_LEADER';
+                primarySetup = 'RS LEADER';
+                primaryDesc = `หุ้นนำตลาดที่แข็งแกร่งกว่าดัชนี RS ${rsScore}`;
+              } else if (isRealEmaBounce) {
+                primaryPreset = 'EMA20_BOUNCE';
+                primarySetup = 'EMA 20 BOUNCE';
+                primaryDesc = 'ย่อแตะแนวรับ EMA20 แล้วดึงกลับพยุงตัว';
+              } else if (isRealVcp) {
+                primaryPreset = 'VCP';
+                primarySetup = 'VCP / SQUEEZE';
+                primaryDesc = 'บีบตัวกรอบแคบมาก + โวลุ่มแห้งสนิท (<0.85x) รอกระชาก';
+              } else if (isRealMomentum) {
+                primaryPreset = 'MACD_MOMENTUM';
+                primarySetup = 'MACD MOMENTUM';
+                primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้นต่อเนื่อง ค่าเฉลี่ยเรียงตัวสวย';
+              } else if (isUptrend) {
+                primaryPreset = 'MACD_MOMENTUM';
+                primarySetup = 'MACD MOMENTUM';
+                primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
+              } else {
                 continue;
               }
 
-              let primaryPreset = 'MACD_MOMENTUM';
-              let primarySetup = 'MACD MOMENTUM';
-              let primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
-
-              if (isBreakout) {
-                primaryPreset = 'BREAKOUT';
-                primarySetup = 'VOLUME BREAKOUT';
-                primaryDesc = 'เบรคทะลุ High 20 วัน + โวลุ่มพีค';
-              } else if (isPocketPivot) {
-                primaryPreset = 'POCKET_PIVOT';
-                primarySetup = 'POCKET PIVOT';
-                primaryDesc = 'ราคาทรงตัว + มีเงินใหญ่แอบเก็บ';
-              } else if (isEma20Bounce) {
-                primaryPreset = 'EMA20_BOUNCE';
-                primarySetup = 'EMA 20 BOUNCE';
-                primaryDesc = 'ย่อแตะแนวรับ 20D แล้วพยุงตัว';
-              } else if (isVcp) {
-                primaryPreset = 'VCP';
-                primarySetup = 'VCP / SQUEEZE';
-                primaryDesc = 'บีบตัวแน่น (<5.5%) + โวลุ่มเริ่มแห้ง รอกระชาก';
-              } else if (isRsLeader) {
-                primaryPreset = 'RS_LEADER';
-                primarySetup = 'RS LEADER';
-                primaryDesc = 'หุ้นผู้นำตลาดที่แข็งแกร่งกว่าดัชนี RS > 65';
-              }
-
               // Pure Scanner Entrant Definition (100% Non-Repetitive & Anti-Whipsaw):
-              // A stock is NEW on Day T if and only if it was NOT qualified in the scanner on Day T-1 (yesterday)
-              // AND was NOT a 1-day flip-flop whipsaw from Day T-2!
               const prevCandle = targetIdx > 0 ? candles[targetIdx - 1] : null;
               const prevCloses = historicalCloses.slice(0, targetIdx);
               const prevEma20 = prevCandle ? (calculateEMA(prevCloses, 20)[targetIdx - 1] ?? prevCandle.close) : ema20;
@@ -2554,16 +2565,10 @@ async function handleScan(req, res, parsedUrl) {
                 wasInScanner2DaysAgo = candle2Ago.close >= ema20_2Ago;
               }
 
-              // Only stocks that freshly entered today (not in scanner over the past 2 sessions) are NEW!
-              const isNewEntrant = (!wasInScannerYesterday && !wasInScanner2DaysAgo) && (close >= ema20) && (changePct > 0) && (distEma20 <= 5.0);
+              const isNewEntrant = (!wasInScannerYesterday && !wasInScanner2DaysAgo) && (close >= ema20) && (changePct > 0) && (distEma20 <= 4.5);
 
-              const matchedPresets = ['ALL'];
-              if (isBreakout) matchedPresets.push('BREAKOUT');
-              if (isPocketPivot) matchedPresets.push('POCKET_PIVOT');
-              if (isEma20Bounce) matchedPresets.push('EMA20_BOUNCE');
-              if (isVcp) matchedPresets.push('VCP');
-              if (isRsLeader) matchedPresets.push('RS_LEADER');
-              if (isMomentum) matchedPresets.push('MACD_MOMENTUM');
+              // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
+              const matchedPresets = ['ALL', primaryPreset];
               if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
               if (h1_aboveAll) matchedPresets.push('H1_BULL');
               if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2573,19 +2578,15 @@ async function handleScan(req, res, parsedUrl) {
 
               const matchedSetups = {
                 ALL: { name: primarySetup, desc: primaryDesc },
-                BREAKOUT: { name: 'VOLUME BREAKOUT', desc: 'เบรคทะลุ High 20 วัน + โวลุ่มพีค' },
-                POCKET_PIVOT: { name: 'POCKET PIVOT', desc: 'ราคาทรงตัว + มีเงินใหญ่แอบเก็บ' },
-                EMA20_BOUNCE: { name: 'EMA 20 BOUNCE', desc: 'ย่อแตะแนวรับ 20D แล้วพยุงตัว' },
-                VCP: { name: 'VCP / SQUEEZE', desc: 'บีบตัวแน่น (<5.5%) + โวลุ่มเริ่มแห้ง รอกระชาก' },
-                RS_LEADER: { name: 'RS LEADER', desc: `หุ้นผู้นำตลาดที่แข็งแกร่งกว่าดัชนี RS Score ${rsScore}` },
-                MACD_MOMENTUM: { name: 'MACD MOMENTUM', desc: 'หุ้นไต่เทรนด์ขาขึ้นต่อเนื่อง ค่าเฉลี่ยเรียงตัวสวย' }
+                [primaryPreset]: { name: primarySetup, desc: primaryDesc }
               };
-              if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 5%' };
+              if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
               if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
               if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
               if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
               if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
               if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'WINNER IN ZONE', desc: 'หุ้นชนะตลาดที่ยืนในโซน EMA ขาขึ้น' };
+
 
 
               // Day 1 to Day 5 Future Outcome Execution
