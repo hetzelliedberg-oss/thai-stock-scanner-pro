@@ -2019,7 +2019,14 @@ async function handleScan(req, res, parsedUrl) {
             continue;
           }
 
+          const isNewEntrant = (isUptrend && distEma20 >= 0 && distEma20 <= 4.5 && (
+            (primaryPreset === 'BREAKOUT') ||
+            (primaryPreset === 'POCKET_PIVOT' && range5DPct <= 6.0) ||
+            (rvol >= 1.25 && changePct > 0)
+          ));
+
           const matchedPresets = ['ALL', primaryPreset];
+          if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
           if (h1_aboveAll) matchedPresets.push('H1_BULL');
           if (h2_aboveAll) matchedPresets.push('H2_BULL');
           if (h4_aboveAll) matchedPresets.push('H4_BULL');
@@ -2030,6 +2037,7 @@ async function handleScan(req, res, parsedUrl) {
             ALL: { name: primarySetup, desc: primaryDesc },
             [primaryPreset]: { name: primarySetup, desc: primaryDesc }
           };
+          if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
           if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
           if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
           if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
@@ -2104,6 +2112,7 @@ async function handleScan(req, res, parsedUrl) {
               { day: '1D ago', pct: Math.round(rvol * 70), isGreen: true },
               { day: 'Today', pct: Math.round(rvol * 100), isGreen: changePct >= 0, vol: volume }
             ],
+            isNewEntrant,
             isHistorical: false,
             alpha,
             outperforms: alpha > 0,
@@ -2127,7 +2136,7 @@ async function handleScan(req, res, parsedUrl) {
 
         // Preset Counts
         const presetCounts = { ALL: processedStocks.length };
-        for (const p of ['BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+        for (const p of ['NEW_ENTRANT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
           presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
         }
 
@@ -2538,7 +2547,17 @@ async function handleScan(req, res, parsedUrl) {
                 continue;
               }
 
+              const prevCandle = targetIdx > 0 ? candles[targetIdx - 1] : null;
+              const prevEma20 = prevCandle ? (calculateEMA(historicalCloses, 20)[targetIdx - 1] ?? ema20) : ema20;
+              const justCrossedEma20 = prevCandle ? (prevCandle.close < prevEma20 && close >= ema20) : false;
+              const isNewEntrant = justCrossedEma20 || (isUptrend && distEma20 >= 0 && distEma20 <= 4.5 && (
+                (primaryPreset === 'BREAKOUT') ||
+                (primaryPreset === 'POCKET_PIVOT' && range5DPct <= 6.0) ||
+                (rvol >= 1.25 && changePct > 0)
+              ));
+
               const matchedPresets = ['ALL', primaryPreset];
+              if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
               if (h1_aboveAll) matchedPresets.push('H1_BULL');
               if (h2_aboveAll) matchedPresets.push('H2_BULL');
               if (h4_aboveAll) matchedPresets.push('H4_BULL');
@@ -2548,6 +2567,7 @@ async function handleScan(req, res, parsedUrl) {
                 ALL: { name: primarySetup, desc: primaryDesc },
                 [primaryPreset]: { name: primarySetup, desc: primaryDesc }
               };
+              if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
               if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
               if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
               if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
@@ -2659,6 +2679,7 @@ async function handleScan(req, res, parsedUrl) {
                 impactLabel: catInfo.impactLabel,
                 impactColor: catInfo.impactColor,
                 catalystSummary: catInfo.impactReason,
+                isNewEntrant,
                 outcome,
                 isHistorical: true,
                 intradayEma
@@ -2674,16 +2695,23 @@ async function handleScan(req, res, parsedUrl) {
 
         processedStocks.sort((a, b) => b.compScore - a.compScore || b.valueTraded - a.valueTraded);
 
+        // Preset Counts
+        const presetCounts = { ALL: processedStocks.length };
+        for (const p of ['NEW_ENTRANT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+          presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
+        }
+
         // Fetch Benchmarks
         const benchmarks = await fetchMarketBenchmarks(market, selectedDate, true, processedStocks);
         const primaryBench = benchmarks[0] || { ret5DPct: 0, changePct: 0, label: market === 'TH' ? 'SET' : 'VOO' };
 
+        // Calculate 5D Alpha relative to primary benchmark
         processedStocks.forEach(s => {
-          // 1D Alpha on that selected scan date (stock change % vs benchmark change %)
-          const alpha1D = Math.round((s.changePct - (primaryBench.changePct || 0)) * 100) / 100;
-          s.alpha = alpha1D;
-          s.outperforms = alpha1D > 0;
-          s.benchmarkName = primaryBench.label;
+          if (primaryBench && primaryBench.changePct !== undefined) {
+            s.alpha = Math.round((s.changePct - primaryBench.changePct) * 100) / 100;
+            s.outperforms = s.alpha > 0;
+            s.benchmarkName = primaryBench.label;
+          }
 
           if (s.intradayEma) {
             s.intradayEma.isWinnerInZone = s.outperforms && (s.intradayEma.h1.aboveAll || s.intradayEma.h2.aboveAll || s.intradayEma.h4.aboveAll);
@@ -2749,34 +2777,33 @@ async function handleScan(req, res, parsedUrl) {
               stopLoss: s.stopLoss,
               targetPrice1: s.targetPrice1,
               targetPrice2: s.targetPrice2,
-              ret2D, pnl2D, ret5D, pnl5D,
+              ret2D,
+              ret5D,
+              pnl2D,
+              pnl5D,
               peakGainPct: s.outcome.peakGainPct,
-              daysToPeak: s.outcome.daysToPeak,
-              maxDrawdownPct: s.outcome.maxDrawdownPct,
+              peakPnl,
               realizedReturnPct: s.outcome.realizedReturnPct,
               realizedPnl,
-              isWin: s.outcome.isWin,
-              status: s.outcome.status,
-              exitReason: s.outcome.exitReason
+              exitReason: s.outcome.exitReason,
+              exitDay: s.outcome.exitDay,
+              isWin: s.outcome.isWin
             };
           });
 
           const lossCount = selected.length - winCount;
           const winLossCoverRatio = totalLosersLoss > 0
             ? Math.round((totalWinnersProfit / totalLosersLoss) * 10) / 10
-            : (totalWinnersProfit > 0 ? 99 : 1);
+            : (totalWinnersProfit > 0 ? 99.9 : 1.0);
 
           return {
-            basketSize: selected.length,
-            totalCapital,
-            capitalPerStock: capPer,
-            winCount,
-            lossCount,
-            winRatePct: Math.round((winCount / selected.length) * 100),
+            count: selected.length,
+            allocatedPerStock: capPer,
+            winRate: Math.round((winCount / selected.length) * 100),
             sumPnl2D,
-            netReturn2DPct: Math.round((sumPnl2D / totalCapital) * 1000) / 10,
+            ret2DPct: Math.round((sumPnl2D / totalCapital) * 1000) / 10,
             sumPnl5D,
-            netReturn5DPct: Math.round((sumPnl5D / totalCapital) * 1000) / 10,
+            ret5DPct: Math.round((sumPnl5D / totalCapital) * 1000) / 10,
             sumPeakPnl,
             peakReturnPct: Math.round((sumPeakPnl / totalCapital) * 1000) / 10,
             sumRealizedPnl,
@@ -2837,7 +2864,8 @@ async function handleScan(req, res, parsedUrl) {
             totalMarketScanned: targetStockList.length,
             matchedCount: filteredStocks.length,
             advancers, decliners, unchanged,
-            marketSentiment: advancers > decliners * 1.5 ? 'BULLISH' : decliners > advancers * 1.5 ? 'BEARISH' : 'NEUTRAL'
+            marketSentiment: advancers > decliners * 1.5 ? 'BULLISH' : decliners > advancers * 1.5 ? 'BEARISH' : 'NEUTRAL',
+            presetCounts
           },
           sectorFlow: buildSectorFlow(processedStocks),
           heatmap: buildSectorHeatmap(processedStocks),

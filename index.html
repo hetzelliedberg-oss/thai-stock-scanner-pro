@@ -74,6 +74,7 @@
     // Presets
     const PRESETS = [
       { id: 'ALL', name: '🎯 All Quality Setups', desc: 'หุ้นพื้นฐานเทคนิคทรงสวย คะแนนรวม 60+' },
+      { id: 'NEW_ENTRANT', name: '✨ Fresh Breakout (ต้นรอบ)', desc: 'พึ่งติดวันแรก ราคายังอยู่ใกล้แนวรับ EMA20 ไม่ไล่ราคาเกิน 4.5%' },
       { id: 'BREAKOUT', name: '🚀 Volume Breakout', desc: 'เบรคทะลุ High วอลุ่มพุ่งแรง (RVOL > 115%)' },
       { id: 'POCKET_PIVOT', name: '💎 Pocket Pivot', desc: 'เงินใหญ่สะสมในกรอบฐาน เหนือ EMA10/20' },
       { id: 'VCP', name: '🌪️ VCP Squeeze', desc: 'กรอบแคบมาก (<5.5%) วอลุ่มแห้ง รอกระชาก' },
@@ -1297,6 +1298,11 @@
                                   <span className="font-mono font-black text-sm text-indigo-400 group-hover:text-indigo-300">
                                     {item.symbol}
                                   </span>
+                                  {item.isNewEntrant && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap shadow-sm" title="✨ Fresh Breakout / พึ่งติดวันแรก: ราคาพึ่งเริ่มเบรคจากฐานหรือข้าม EMA20 วันแรก ยังไม่ไล่ราคาเกิน 4.5%">
+                                      ✨ NEW
+                                    </span>
+                                  )}
                                   {item.impact === 'BENEFICIARY' && (
                                     <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 whitespace-nowrap cursor-help" title={item.catalystSummary || 'ได้ประโยชน์จากสภาวะตลาด'}>
                                       (+) ได้ประโยชน์
@@ -1410,9 +1416,25 @@
                               </span>
                             </td>
 
-                            {/* RS Score */}
-                            <td className="px-3 py-3 text-center border-l border-dark-800 font-mono font-bold text-sm text-purple-300">
-                              {item.rsScore}
+                            {/* RS Score & Multi-period Breakdown */}
+                            <td className="px-3 py-3 text-center border-l border-dark-800 font-mono">
+                              <div className="flex flex-col items-center justify-center space-y-0.5">
+                                <span className={`font-black text-sm px-2 py-0.5 rounded ${
+                                  item.rsScore >= 75 ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                                  item.rsScore >= 60 ? 'text-purple-300' : 'text-slate-400'
+                                }`}>
+                                  {item.rsScore}
+                                </span>
+                                <div className="flex items-center space-x-1 text-[9px] font-medium text-slate-400" title="Relative Strength Return: 1 สัปดาห์ (1W) / 1 เดือน (1M)">
+                                  <span className={((item.timeframeReturns?.['1W'] ?? item.perfW) ?? 0) >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400'}>
+                                    1W:{((item.timeframeReturns?.['1W'] ?? item.perfW) ?? 0) >= 0 ? '+' : ''}{Number((item.timeframeReturns?.['1W'] ?? item.perfW) ?? 0).toFixed(1)}%
+                                  </span>
+                                  <span className="text-slate-600">•</span>
+                                  <span className={((item.timeframeReturns?.['4W'] ?? item.perf1M) ?? 0) >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400'}>
+                                    1M:{((item.timeframeReturns?.['4W'] ?? item.perf1M) ?? 0) >= 0 ? '+' : ''}{Number((item.timeframeReturns?.['4W'] ?? item.perf1M) ?? 0).toFixed(1)}%
+                                  </span>
+                                </div>
+                              </div>
                             </td>
 
                             {/* Trading Plan (Exact R:R 1:2 & 1:3) */}
@@ -1444,6 +1466,7 @@
                                   const setupDesc = item.matchedSetups?.[selectedPreset]?.desc || item.setupDesc || 'แนวโน้มขาขึ้นทรงสวย';
 
                                   const badgeStyle =
+                                    setupName.includes('FRESH') || setupName.includes('NEW') ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
                                     setupName.includes('BREAKOUT') ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' :
                                     setupName.includes('POCKET') ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
                                     setupName.includes('VCP') || setupName.includes('SQUEEZE') ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
