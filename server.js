@@ -2019,11 +2019,21 @@ async function handleScan(req, res, parsedUrl) {
             continue;
           }
 
-          const isNewEntrant = (isUptrend && distEma20 >= 0 && distEma20 <= 4.5 && (
-            (primaryPreset === 'BREAKOUT') ||
-            (primaryPreset === 'POCKET_PIVOT' && range5DPct <= 6.0) ||
-            (rvol >= 1.25 && changePct > 0)
-          ));
+          // Strict Day-1 Fresh Entrant Criteria:
+          // Must be a genuine fresh trigger, not a stock that has already run or was already above EMA20 for days!
+          const prevCloseApprox = changePct !== 0 ? (close / (1 + changePct / 100)) : close;
+          const wasBelowEma20 = prevCloseApprox < ema20;
+          const prev4DaysRun = Math.abs((perfW || 0) - changePct);
+          const isFreshFromBase = prev4DaysRun <= 3.5; // Prior 4 days were calm (<3.5% move)
+
+          // 1. Fresh crossover of EMA20 today
+          const isFreshEma20Cross = wasBelowEma20 && close >= ema20 && changePct >= 0.8;
+          // 2. Fresh Volume Breakout from calm base
+          const isFreshVolBreakout = primaryPreset === 'BREAKOUT' && isFreshFromBase && distEma20 <= 4.0;
+          // 3. Fresh Pocket Pivot from tight range
+          const isFreshPocketPivot = primaryPreset === 'POCKET_PIVOT' && range5DPct <= 5.0 && isFreshFromBase && rvol >= 1.35;
+
+          const isNewEntrant = (isFreshEma20Cross || isFreshVolBreakout || isFreshPocketPivot) && (perfW || 0) <= 7.5;
 
           const matchedPresets = ['ALL', primaryPreset];
           if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
@@ -2547,14 +2557,47 @@ async function handleScan(req, res, parsedUrl) {
                 continue;
               }
 
-              const prevCandle = targetIdx > 0 ? candles[targetIdx - 1] : null;
-              const prevEma20 = prevCandle ? (calculateEMA(historicalCloses, 20)[targetIdx - 1] ?? ema20) : ema20;
-              const justCrossedEma20 = prevCandle ? (prevCandle.close < prevEma20 && close >= ema20) : false;
-              const isNewEntrant = justCrossedEma20 || (isUptrend && distEma20 >= 0 && distEma20 <= 4.5 && (
-                (primaryPreset === 'BREAKOUT') ||
-                (primaryPreset === 'POCKET_PIVOT' && range5DPct <= 6.0) ||
-                (rvol >= 1.25 && changePct > 0)
-              ));
+              // Strict Day 1 Fresh Entry Evaluation
+              const checkIsFreshTrigger = (idx) => {
+                if (idx < 25) return false;
+                const cCur = candles[idx];
+                const cBefore = candles[idx - 1];
+                const cPrevCloses = historicalCloses.slice(0, idx);
+                const cPrevEma20 = calculateEMA(cPrevCloses, 20)[idx - 1] ?? cCur.close;
+                const cCurEma20 = calculateEMA(historicalCloses.slice(0, idx + 1), 20)[idx] ?? cCur.close;
+                const cChg = cBefore.close > 0 ? ((cCur.close - cBefore.close) / cBefore.close) * 100 : 0;
+                const cDistEma20 = cCurEma20 > 0 ? ((cCur.close - cCurEma20) / cCurEma20) * 100 : 0;
+
+                // 1. First day crossing EMA20
+                const isCross = cBefore.close < cPrevEma20 && cCur.close >= cCurEma20 && cChg > 0;
+
+                // 2. Fresh 20D High Breakout (yesterday was below, today broke out)
+                const highs20 = candles.slice(Math.max(0, idx - 20), idx).map(x => x.high);
+                const max20H = highs20.length > 0 ? Math.max(...highs20) : cCur.high;
+                const isBreakout = cCur.close >= max20H && cBefore.close < max20H && cChg > 0;
+
+                // 3. Fresh Volume Explosion from base
+                const p5Vols = candles.slice(Math.max(0, idx - 5), idx).map(x => x.volume);
+                const avg5V = p5Vols.length > 0 ? p5Vols.reduce((a, b) => a + b, 0) / p5Vols.length : cCur.volume;
+                const isVolSurge = cCur.volume >= avg5V * 1.5 && cChg >= 1.0 && cDistEma20 >= 0 && cDistEma20 <= 4.0;
+
+                return isCross || isBreakout || isVolSurge;
+              };
+
+              let isNewEntrant = checkIsFreshTrigger(targetIdx);
+
+              // Strict Non-Repetitive Invariant:
+              // If the stock already triggered in the previous 3 trading days, it is NOT Day 1 today!
+              if (isNewEntrant) {
+                for (let back = 1; back <= 3; back++) {
+                  if (targetIdx - back >= 25) {
+                    if (checkIsFreshTrigger(targetIdx - back)) {
+                      isNewEntrant = false;
+                      break;
+                    }
+                  }
+                }
+              }
 
               const matchedPresets = ['ALL', primaryPreset];
               if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');

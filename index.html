@@ -74,7 +74,7 @@
     // Presets
     const PRESETS = [
       { id: 'ALL', name: '🎯 All Quality Setups', desc: 'หุ้นพื้นฐานเทคนิคทรงสวย คะแนนรวม 60+' },
-      { id: 'NEW_ENTRANT', name: '✨ Fresh Breakout (ต้นรอบ)', desc: 'พึ่งติดวันแรก ราคายังอยู่ใกล้แนวรับ EMA20 ไม่ไล่ราคาเกิน 4.5%' },
+      { id: 'NEW_ENTRANT', name: '✨ Fresh Breakout (ต้นรอบ)', desc: 'พึ่งเกิดสัญญาณเข้าวันแรก (Day 1) ไม่เคยติดใน 3 วันก่อนหน้า ราคาพึ่งข้ามหรือเบรคแนวรับ' },
       { id: 'BREAKOUT', name: '🚀 Volume Breakout', desc: 'เบรคทะลุ High วอลุ่มพุ่งแรง (RVOL > 115%)' },
       { id: 'POCKET_PIVOT', name: '💎 Pocket Pivot', desc: 'เงินใหญ่สะสมในกรอบฐาน เหนือ EMA10/20' },
       { id: 'VCP', name: '🌪️ VCP Squeeze', desc: 'กรอบแคบมาก (<5.5%) วอลุ่มแห้ง รอกระชาก' },
@@ -1299,7 +1299,7 @@
                                     {item.symbol}
                                   </span>
                                   {item.isNewEntrant && (
-                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap shadow-sm" title="✨ Fresh Breakout / พึ่งติดวันแรก: ราคาพึ่งเริ่มเบรคจากฐานหรือข้าม EMA20 วันแรก ยังไม่ไล่ราคาเกิน 4.5%">
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap shadow-sm" title="✨ Fresh Breakout (Day 1): พึ่งติดสแกนวันแรก ไม่ซ้ำกับวันก่อนหน้า ราคายังอยู่ใกล้แนวรับ ไม่ไล่ราคา">
                                       ✨ NEW
                                     </span>
                                   )}
