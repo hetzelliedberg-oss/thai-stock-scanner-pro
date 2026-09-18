@@ -2019,14 +2019,18 @@ async function handleScan(req, res, parsedUrl) {
             continue;
           }
 
-          // Pure Scanner Entrant Definition (100% Non-Repetitive):
-          // A stock is NEW on Day T if and only if it was NOT in the scanner on Day T-1 (yesterday)!
+          // Pure Scanner Entrant Definition (100% Non-Repetitive & Anti-Whipsaw):
+          // A stock is NEW on Day T if and only if:
+          // 1. It was NOT in the scanner yesterday (prevClose < prevEma20)
+          // 2. Prior days were calm (not already running or whipping back and forth)
           const prevClose = changePct !== 0 ? (close / (1 + changePct / 100)) : close;
           const prevEma20 = (ema20 - (close * (2 / 21))) / (1 - (2 / 21));
           const wasInScannerYesterday = prevClose >= prevEma20;
+          const priorDaysMove = Math.abs((perfW || 0) - changePct);
+          const isFreshMove = priorDaysMove <= 3.5;
 
-          // Only stocks that freshly crossed above EMA20 today (were NOT in yesterday's scanner) can be NEW!
-          const isNewEntrant = !wasInScannerYesterday && (close >= ema20) && (changePct > 0);
+          // Only stocks that freshly crossed above EMA20 today from a calm base can be NEW!
+          const isNewEntrant = !wasInScannerYesterday && isFreshMove && (close >= ema20) && (changePct > 0);
 
           const matchedPresets = ['ALL', primaryPreset];
           if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
@@ -2550,15 +2554,24 @@ async function handleScan(req, res, parsedUrl) {
                 continue;
               }
 
-              // Pure Scanner Entrant Definition (100% Non-Repetitive):
-              // A stock is NEW on Day T if and only if it was NOT qualified in the scanner on Day T-1 (yesterday)!
+              // Pure Scanner Entrant Definition (100% Non-Repetitive & Anti-Whipsaw):
+              // A stock is NEW on Day T if and only if it was NOT qualified in the scanner on Day T-1 (yesterday)
+              // AND was NOT a 1-day flip-flop whipsaw from Day T-2!
               const prevCandle = targetIdx > 0 ? candles[targetIdx - 1] : null;
               const prevCloses = historicalCloses.slice(0, targetIdx);
               const prevEma20 = prevCandle ? (calculateEMA(prevCloses, 20)[targetIdx - 1] ?? prevCandle.close) : ema20;
               const wasInScannerYesterday = prevCandle ? (prevCandle.close >= prevEma20) : false;
 
-              // Only stocks that freshly crossed above EMA20 today (were NOT in yesterday's scanner) can be NEW!
-              const isNewEntrant = !wasInScannerYesterday && (close >= ema20) && (changePct > 0);
+              let wasInScanner2DaysAgo = false;
+              if (targetIdx >= 2) {
+                const candle2Ago = candles[targetIdx - 2];
+                const closes2Ago = historicalCloses.slice(0, targetIdx - 1);
+                const ema20_2Ago = calculateEMA(closes2Ago, 20)[targetIdx - 2] ?? candle2Ago.close;
+                wasInScanner2DaysAgo = candle2Ago.close >= ema20_2Ago;
+              }
+
+              // Only stocks that freshly entered today (not in scanner over the past 2 sessions) are NEW!
+              const isNewEntrant = (!wasInScannerYesterday && !wasInScanner2DaysAgo) && (close >= ema20) && (changePct > 0);
 
               const matchedPresets = ['ALL', primaryPreset];
               if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
