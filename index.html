@@ -95,11 +95,13 @@
 
     // US Universes
     const US_UNIVERSES = [
+      { id: 'ALL', name: 'ทั้งตลาด US (รวม ADR / TSM / ASML)', count: '500+ ตัวยอดนิยม', icon: '🌐' },
+      { id: 'SEMIS', name: 'Semiconductors & AI (ชิป & เทค)', count: '30 ชิประดับโลก', icon: '⚡' },
       { id: 'SP500', name: 'S&P 500 (VOO)', count: '500 หุ้นใหญ่', icon: '🏛️' },
       { id: 'NASDAQ100', name: 'NASDAQ 100 (QQQM)', count: '101 เทคยักษ์', icon: '💻' },
+      { id: 'MAG7', name: 'Magnificent 7', count: '7 ยักษ์ใหญ่', icon: '💎' },
       { id: 'VUG', name: 'Growth (VUG)', count: '50 หุ้นเติบโต', icon: '🚀' },
       { id: 'SCHD', name: 'Dividend (SCHD)', count: '50 หุ้นปันผล', icon: '💰' },
-      { id: 'MAG7', name: 'Magnificent 7', count: '7 ยักษ์ใหญ่', icon: '💎' },
       { id: 'CUSTOM', name: 'กำหนดเอง', count: 'ตามสั่ง', icon: '✏️' }
     ];
 
@@ -110,9 +112,9 @@
     ];
 
     const DEFAULT_US_STOCKS = [
-      'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','AVGO','COST','NFLX',
-      'AMD','ADBE','QCOM','TXN','INTU','AMGN','ISRG','AMAT','BKNG','PANW',
-      'MU','LRCX','ADI','KLAC','CRWD','PLTR','ARM','SMCI','TTD','LLY'
+      'NVDA','AAPL','MSFT','AMZN','GOOGL','META','TSLA','TSM','AVGO','ASML',
+      'COST','NFLX','AMD','ADBE','QCOM','ARM','TXN','INTU','AMGN','ISRG',
+      'AMAT','BKNG','PANW','MU','LRCX','ADI','KLAC','CRWD','PLTR','LLY'
     ];
 
     // Market-aware date helper (100% Fact: Weekends rollback to Friday's completed session)
@@ -252,7 +254,7 @@
         setMarket(newMarket);
         const newDate = getMarketActiveDate(newMarket);
         setSelectedDate(newDate);
-        const newUniv = newMarket === 'TH' ? 'ALL' : 'SP500';
+        const newUniv = 'ALL';
         setUniverse(newUniv);
         setSelectedSector('ALL');
         setCustomStocks(newMarket === 'TH' ? DEFAULT_THAI_STOCKS.join(', ') : DEFAULT_US_STOCKS.join(', '));

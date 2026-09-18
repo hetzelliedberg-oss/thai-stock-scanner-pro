@@ -119,8 +119,14 @@ const SCHD_LIST = [
   'VLO', 'MPC', 'PSX', 'EOG', 'SLB', 'COP', 'OXY', 'PGR', 'CB', 'ALL'
 ];
 
+const SEMIS_AI_LIST = [
+  'NVDA', 'TSM', 'AVGO', 'ASML', 'AMD', 'QCOM', 'ARM', 'MU', 'INTC',
+  'TXN', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'ADI', 'NXPI', 'MPWR', 'ON',
+  'MCHP', 'STM', 'GFS', 'PLTR', 'SMCI', 'CRWD', 'PANW', 'MSFT', 'GOOGL', 'AMZN', 'META', 'AAPL'
+];
+
 const SP500_CORE_LIST = [
-  ...new Set([...US_MAG7, ...NASDAQ100_LIST.slice(0, 50), ...VUG_LIST.slice(0, 30), ...SCHD_LIST.slice(0, 30)])
+  ...new Set(['TSM', 'ASML', 'ARM', 'NVO', ...US_MAG7, ...NASDAQ100_LIST.slice(0, 50), ...VUG_LIST.slice(0, 30), ...SCHD_LIST.slice(0, 30)])
 ];
 
 // Comprehensive Stock-to-Sector Taxonomy for Money Rotation Analysis
@@ -1696,7 +1702,7 @@ async function handleScan(req, res, parsedUrl) {
       }
 
       const market = (params.market || 'TH').toUpperCase();
-      const universe = (params.universe || (market === 'TH' ? 'ALL' : 'SP500')).toUpperCase();
+      const universe = (params.universe || 'ALL').toUpperCase();
       const preset = (params.preset || 'ALL').toUpperCase();
       const minValue = parseFloat(params.minValue) || 0;
       const sectorFilter = (params.sector || 'ALL').toUpperCase();
@@ -1717,17 +1723,16 @@ async function handleScan(req, res, parsedUrl) {
           : "https://scanner.tradingview.com/america/scan";
 
         const filter = [
-          { left: "type", operation: "equal", right: "stock" }
+          { left: "type", operation: "in_range", right: ["stock", "dr"] }
         ];
 
         if (market === 'US') {
-          filter.push({ left: "subtype", operation: "in_range", right: ["common"] });
-          filter.push({ left: "is_primary", operation: "equal", right: true });
+          // Allow common stocks and ADRs (Depositary Receipts for global market leaders like TSM, ASML, ARM, NVO, BABA)
           filter.push({ left: "close", operation: "greater", right: 2.0 });
           filter.push({ left: "volume", operation: "greater", right: 100000 });
           if (universe === 'NASDAQ100') {
             filter.push({ left: "exchange", operation: "equal", right: "NASDAQ" });
-          } else if (universe === 'SP500' || universe === 'ALL_US') {
+          } else if (universe === 'SP500') {
             filter.push({ left: "market_cap_basic", operation: "greater", right: 5000000000 });
           }
         } else {
@@ -1740,7 +1745,7 @@ async function handleScan(req, res, parsedUrl) {
         }
 
         const maxRange = market === 'US'
-          ? (universe === 'MAG7' ? 20 : universe === 'NASDAQ100' ? 120 : 500)
+          ? (universe === 'MAG7' ? 20 : universe === 'SEMIS' ? 50 : universe === 'NASDAQ100' ? 120 : 600)
           : (universe === 'SET50' ? 60 : universe === 'SET100' ? 120 : 900);
 
         const tvBody = JSON.stringify({
@@ -1826,9 +1831,11 @@ async function handleScan(req, res, parsedUrl) {
             if (universe === 'MAI' && !MAI_LIST.includes(symbol) && exchange !== 'MAI') continue;
           } else {
             if (universe === 'MAG7' && !US_MAG7.includes(symbol)) continue;
+            if (universe === 'SEMIS' && !SEMIS_AI_LIST.includes(symbol)) continue;
             if (universe === 'NASDAQ100' && !NASDAQ100_LIST.includes(symbol)) continue;
             if (universe === 'VUG' && !VUG_LIST.includes(symbol)) continue;
             if (universe === 'SCHD' && !SCHD_LIST.includes(symbol)) continue;
+            if (universe === 'SP500' && !SP500_CORE_LIST.includes(symbol) && symbol !== 'TSM' && symbol !== 'ASML' && symbol !== 'ARM') continue;
             if (universe === 'CUSTOM' && customSymbols.length > 0 && !customSymbols.includes(symbol)) continue;
           }
 
@@ -2256,11 +2263,12 @@ async function handleScan(req, res, parsedUrl) {
         let targetStockList = [];
         if (market === 'US') {
           if (universe === 'MAG7') targetStockList = US_MAG7;
+          else if (universe === 'SEMIS') targetStockList = SEMIS_AI_LIST;
           else if (universe === 'NASDAQ100') targetStockList = NASDAQ100_LIST;
           else if (universe === 'VUG') targetStockList = VUG_LIST;
           else if (universe === 'SCHD') targetStockList = SCHD_LIST;
           else if (universe === 'CUSTOM' && customSymbols.length > 0) targetStockList = customSymbols;
-          else targetStockList = SP500_CORE_LIST;
+          else targetStockList = [...new Set(['TSM', 'ASML', 'ARM', 'NVO', ...SP500_CORE_LIST, ...SEMIS_AI_LIST])];
         } else {
           if (universe === 'SET50') targetStockList = SET50_LIST;
           else if (universe === 'SET100') targetStockList = SET100_LIST;
