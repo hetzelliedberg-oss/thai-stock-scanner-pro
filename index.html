@@ -861,6 +861,9 @@
                     <span className="text-emerald-400 font-bold">▲ {stats.advancers}</span>
                     <span className="text-rose-400 font-bold">▼ {stats.decliners}</span>
                     <span className="text-slate-400 font-bold">■ {stats.unchanged}</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30" title="ค่าเฉลี่ยคะแนน Relative Strength (RS Score) ของหุ้นในตาราง ยิ่งสูงกว่า 75 ยิ่งสะท้อนว่าตลาดมีพลังการนำกลุ่มที่แข็งแกร่งมาก">
+                      👑 Avg RS: {stats.avgRsScore || 50}
+                    </span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       stats.marketSentiment === 'BULLISH' ? 'bg-emerald-500/20 text-emerald-400' :
                       stats.marketSentiment === 'BEARISH' ? 'bg-rose-500/20 text-rose-400' : 'bg-slate-700 text-slate-300'

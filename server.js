@@ -2265,6 +2265,7 @@ async function handleScan(req, res, parsedUrl) {
             totalMarketScanned: rawStocks.length,
             matchedCount: filteredStocks.length,
             advancers, decliners, unchanged,
+            avgRsScore: filteredStocks.length > 0 ? Math.round(filteredStocks.reduce((a, b) => a + (b.rsScore || 50), 0) / filteredStocks.length) : 50,
             marketSentiment: advancers > decliners * 1.5 ? 'BULLISH' : decliners > advancers * 1.5 ? 'BEARISH' : 'NEUTRAL',
             presetCounts
           },
@@ -2398,6 +2399,8 @@ async function handleScan(req, res, parsedUrl) {
               const h4_cross20_50 = h4_ema20 >= h4_ema50;
 
               const tripleConfluence = h1_aboveAll && h2_aboveAll && h4_aboveAll;
+              const isWinnerInZone = (changePct > 0) && (h1_aboveAll || h2_aboveAll || h4_aboveAll);
+              const isWinnerTripleConfluence = (changePct > 0) && tripleConfluence;
 
               const intradayEma = {
                 h1: {
@@ -2437,8 +2440,8 @@ async function handleScan(req, res, parsedUrl) {
                   zoneStatus: h4_aboveAll ? 'BULL' : (h4_above20 ? 'PARTIAL' : 'BEAR')
                 },
                 tripleConfluence,
-                isWinnerInZone: false,
-                isWinnerTripleConfluence: false
+                isWinnerInZone,
+                isWinnerTripleConfluence
               };
 
               const past10Vols = candles.slice(Math.max(0, targetIdx - 10), targetIdx).map(c => c.volume);
@@ -2500,13 +2503,14 @@ async function handleScan(req, res, parsedUrl) {
               const min5D = past5Lows.length > 0 ? Math.min(...past5Lows) : low;
               const range5DPct = min5D > 0 ? Math.round(((max5D - min5D) / min5D) * 1000) / 10 : dayRangePct;
 
+
+
               const isUptrend = close >= ema20;
               const isGreenCandle = close >= (cPrev?.close || close);
 
               const past40Close = targetIdx >= 40 ? candles[targetIdx - 40].close : candles[0].close;
               const rsScore = past40Close > 0 ? Math.min(99, Math.max(1, Math.round(50 + ((close - past40Close) / past40Close * 100)))) : 50;
 
-              // Comprehensive Multi-Strategy Classification (Historical):
               // Sharp Non-Overlapping Strategy Classification (Historical):
               const isRealBreakout = isUptrend && close >= high20 && (rvol >= 1.3 || volPctOf50D >= 130) && changePct >= 1.5;
               const isRealPocketPivot = isUptrend && range5DPct <= 6.5 && (rvol >= 1.2 || volPctOf50D >= 120) && isGreenCandle && changePct >= 0.5;
@@ -2701,7 +2705,7 @@ async function handleScan(req, res, parsedUrl) {
                 intradayEma
               });
             } catch (err) {
-              // Ignore single error
+              console.error('[Historical Stock Error]', sym, err.message);
             }
           }
         };
@@ -2880,6 +2884,7 @@ async function handleScan(req, res, parsedUrl) {
             totalMarketScanned: targetStockList.length,
             matchedCount: filteredStocks.length,
             advancers, decliners, unchanged,
+            avgRsScore: filteredStocks.length > 0 ? Math.round(filteredStocks.reduce((a, b) => a + (b.rsScore || 50), 0) / filteredStocks.length) : 50,
             marketSentiment: advancers > decliners * 1.5 ? 'BULLISH' : decliners > advancers * 1.5 ? 'BEARISH' : 'NEUTRAL',
             presetCounts
           },
