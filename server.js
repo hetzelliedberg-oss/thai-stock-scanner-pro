@@ -949,6 +949,182 @@ async function fetchStockHistory(symbol, market = 'TH') {
 }
 
 /**
+ * Benchmark Daily Candles Fetcher (QQQ for US, SET for TH)
+ */
+async function fetchBenchmarkCandles(market = 'US') {
+  if (market === 'US') {
+    let qqq = await fetchStockHistory('QQQ', 'US');
+    if (!qqq || qqq.length === 0) qqq = await fetchStockHistory('QQQM', 'US');
+    if (!qqq || qqq.length === 0) qqq = await fetchStockHistory('SPY', 'US');
+    return qqq || [];
+  } else {
+    let set = await fetchStockHistory('^SET.BK', 'TH');
+    if (!set || set.length === 0) set = await fetchStockHistory('TDEX.BK', 'TH');
+    return set || [];
+  }
+}
+
+/**
+ * Authentic RS Line Calculation vs Benchmark:
+ * RS Line = (Stock Close / Benchmark Close) * 1000
+ * Computes 21-period SMA on RS Line, and detects 20D / 50D New Highs
+ */
+function calculateRSLine(stockCandles = [], benchmarkCandles = []) {
+  if (!stockCandles || stockCandles.length === 0) {
+    return { candles: [], summary: {} };
+  }
+
+  // Map benchmark closes by date
+  const benchMap = new Map();
+  let lastBenchClose = 0;
+  for (const b of benchmarkCandles) {
+    if (b && b.close > 0) {
+      benchMap.set(b.dateStr, b.close);
+      lastBenchClose = b.close;
+    }
+  }
+
+  const enrichedCandles = stockCandles.map(c => ({ ...c }));
+  const rawRsValues = [];
+
+  // 1. Calculate RS point-by-point
+  let fallbackBench = lastBenchClose;
+  for (let i = 0; i < enrichedCandles.length; i++) {
+    const c = enrichedCandles[i];
+    const bClose = benchMap.get(c.dateStr) || fallbackBench;
+    if (bClose > 0) {
+      fallbackBench = bClose;
+      const rsVal = Math.round((c.close / bClose) * 1000 * 100) / 100;
+      c.rsLine = rsVal;
+      rawRsValues.push(rsVal);
+    } else {
+      c.rsLine = null;
+      rawRsValues.push(null);
+    }
+  }
+
+  // 2. Calculate 21-period SMA of RS Line
+  const rsSma21Arr = [];
+  for (let i = 0; i < rawRsValues.length; i++) {
+    if (i < 20 || rawRsValues[i] === null) {
+      rsSma21Arr.push(rawRsValues[i] ?? null);
+    } else {
+      const slice = rawRsValues.slice(i - 20, i + 1).filter(v => v !== null);
+      if (slice.length > 0) {
+        const sum = slice.reduce((a, b) => a + b, 0);
+        rsSma21Arr.push(Math.round((sum / slice.length) * 100) / 100);
+      } else {
+        rsSma21Arr.push(rawRsValues[i]);
+      }
+    }
+  }
+
+  // 3. Detect 20D / 50D Highs and attach to candles
+  for (let i = 0; i < enrichedCandles.length; i++) {
+    enrichedCandles[i].rsLineSma21 = rsSma21Arr[i];
+    const currRs = rawRsValues[i];
+    if (currRs !== null && i >= 1) {
+      const past20 = rawRsValues.slice(Math.max(0, i - 20), i).filter(v => v !== null);
+      const max20 = past20.length > 0 ? Math.max(...past20) : currRs;
+      const isNewHigh20 = currRs >= max20;
+
+      const past50 = rawRsValues.slice(Math.max(0, i - 50), i).filter(v => v !== null);
+      const max50 = past50.length > 0 ? Math.max(...past50) : currRs;
+      const isNewHigh50 = currRs >= max50;
+
+      enrichedCandles[i].isRsNewHigh = isNewHigh20;
+      enrichedCandles[i].isRsNewHigh50 = isNewHigh50;
+    } else {
+      enrichedCandles[i].isRsNewHigh = false;
+      enrichedCandles[i].isRsNewHigh50 = false;
+    }
+  }
+
+  // Target summary metrics (for last candle)
+  const lastIdx = enrichedCandles.length - 1;
+  const lastCandle = enrichedCandles[lastIdx] || {};
+  const prevRs = lastIdx > 0 ? rawRsValues[lastIdx - 1] : lastCandle.rsLine;
+  const rs5Ago = lastIdx >= 5 ? rawRsValues[lastIdx - 5] : prevRs;
+  const rsSlope5D = (rs5Ago && rs5Ago > 0 && lastCandle.rsLine) 
+    ? Math.round(((lastCandle.rsLine - rs5Ago) / rs5Ago) * 10000) / 100 
+    : 0;
+
+  const summary = {
+    rsLineVal: lastCandle.rsLine || 0,
+    rsLineSma21: lastCandle.rsLineSma21 || 0,
+    isRsLineNewHigh20D: Boolean(lastCandle.isRsNewHigh),
+    isRsLineNewHigh50D: Boolean(lastCandle.isRsNewHigh50),
+    isRsAboveSma21: Boolean(lastCandle.rsLine && lastCandle.rsLineSma21 && lastCandle.rsLine >= lastCandle.rsLineSma21),
+    rsHookDown: Boolean(lastCandle.rsLine && prevRs && lastCandle.rsLine < prevRs && (lastCandle.rsLineSma21 ? lastCandle.rsLine < lastCandle.rsLineSma21 : true)),
+    rsSlope5D
+  };
+
+  return { candles: enrichedCandles, summary };
+}
+
+/**
+ * Capital Swap Advisor (RS Divergence Cross Rule):
+ * Detects when Stock A in portfolio breaks below EMA20 AND RS Line hooks down,
+ * and advises swapping capital into Stock B (RS Line New High near EMA10/20 support).
+ */
+function buildSwapAdvice(basketHoldings = [], candidatePool = [], currency = '$') {
+  // 1. Look for sell trigger: stock breaking below EMA20 (or distEma20 < 0) AND RS Line hook down / negative slope
+  let sellStock = basketHoldings.find(h => {
+    const isBelowEma = (h.price && h.stopLoss && h.price < (h.stopLoss * 1.03)) || (h.close !== undefined && h.ema20 !== undefined && h.close < h.ema20) || (h.distEma20 !== undefined && h.distEma20 < 0);
+    const isRsWeak = h.rsHookDown || (h.rsSlope5D !== undefined && h.rsSlope5D < -0.5) || (h.alpha !== undefined && h.alpha < -1.0) || (h.changePct !== undefined && h.changePct < -1.5);
+    return isBelowEma && isRsWeak;
+  });
+
+  if (!sellStock && candidatePool.length > 0) {
+    sellStock = candidatePool.find(s => {
+      const isBelowEma = (s.close !== undefined && s.ema20 !== undefined && s.close < s.ema20) || (s.distEma20 !== undefined && s.distEma20 < 0);
+      const isRsWeak = s.rsHookDown || (s.rsSlope5D !== undefined && s.rsSlope5D < -0.5) || (s.alpha !== undefined && s.alpha < -1.0) || (s.changePct !== undefined && s.changePct < -2.0);
+      return isBelowEma && isRsWeak;
+    });
+  }
+
+  // 2. Look for buy candidate: RS Line Breakout near EMA10/20 (distEma20 <= 4.0%)
+  let buyStock = candidatePool.find(s => 
+    s.matchedPresets && s.matchedPresets.includes('RS_LINE_BREAKOUT') && 
+    (!sellStock || s.symbol !== sellStock.symbol) &&
+    (s.distEma20 === undefined || s.distEma20 <= 4.0)
+  );
+
+  if (!buyStock && candidatePool.length > 0) {
+    buyStock = candidatePool.find(s => 
+      s.matchedPresets && (s.matchedPresets.includes('NEW_ENTRANT') || s.matchedPresets.includes('RS_LEADER')) &&
+      (!sellStock || s.symbol !== sellStock.symbol) &&
+      (s.distEma20 === undefined || s.distEma20 <= 4.0)
+    );
+  }
+
+  const hasSwap = Boolean(sellStock && buyStock);
+  return {
+    hasSwap,
+    rule: 'RS Divergence Cross (สับตัวต้นรอบ)',
+    sellStock: sellStock ? {
+      symbol: sellStock.symbol,
+      name: sellStock.name || sellStock.symbol,
+      price: sellStock.close || sellStock.price,
+      changePct: sellStock.changePct || 0,
+      reason: 'หลุด EMA20 และ RS Line หักหัวลง (เงินทุนสถาบันกำลังไหลออก)'
+    } : null,
+    buyStock: buyStock ? {
+      symbol: buyStock.symbol,
+      name: buyStock.name || buyStock.symbol,
+      price: buyStock.close || buyStock.price,
+      changePct: buyStock.changePct || 0,
+      rsScore: buyStock.rsScore || 70,
+      distEma20: buyStock.distEma20 || 0,
+      reason: 'RS Line ทำ New High สวนทางตลาด + พักตัวโซน EMA10/20 ไม่ไล่ดอย'
+    } : null,
+    action: hasSwap 
+      ? `ขาย ${sellStock.symbol} 100% ➔ สับเงินย้ายเข้า ${buyStock.symbol} ทันที เพื่อรักษาพอร์ตให้ยืนบวกสวนตลาด`
+      : 'ไม่มีสัญญาณสับตัว (พอร์ตอยู่ในจุดสมดุล หุ้นในพอร์ตยังยืนหยัดเหนือแนวรับ)'
+  };
+}
+
+/**
  * TradingView Global Scanner for Real-Time Macro Benchmarks (100% Fact)
  */
 function fetchTVGlobalScan(tickers) {
@@ -1976,6 +2152,10 @@ async function handleScan(req, res, parsedUrl) {
           // 2. POCKET PIVOT: Institutional volume accumulation in tight base (Range <= 6.5%, Vol >= 120%)
           const isRealPocketPivot = isUptrend && range5DPct <= 6.5 && (rvol >= 1.2 || volPctOf50D >= 120) && isGreenCandle && changePct >= 0.5;
 
+          // 2.5 RS LINE BREAKOUT (ต้นรอบ ไม่ไล่ดอย):
+          // RS Line New High or strong Alpha, while near EMA10/20 support (distEma20 <= 4.0% and close >= ema20 * 0.985)
+          const isRealRsLineBreakout = isUptrend && (alpha >= 1.0 || (changePct > 0 && (primaryBench.changePct || 0) <= 0)) && distEma20 <= 4.0 && close >= ema20 * 0.985 && rsScore >= 65;
+
           // 3. RS LEADER: Pure Market Leader outperforming the index (RS Score >= 75 and Alpha >= 1.0%)
           const isRealRsLeader = isUptrend && rsScore >= 75 && alpha >= 1.0 && changePct > 0;
 
@@ -2000,6 +2180,10 @@ async function handleScan(req, res, parsedUrl) {
             primaryPreset = 'POCKET_PIVOT';
             primarySetup = 'POCKET PIVOT';
             primaryDesc = 'ราคาทรงตัวในฐาน + มีเงินใหญ่แอบสะสม';
+          } else if (isRealRsLineBreakout) {
+            primaryPreset = 'RS_LINE_BREAKOUT';
+            primarySetup = 'RS LINE BREAKOUT';
+            primaryDesc = 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 (ต้นรอบ ไม่ไล่ดอย)';
           } else if (isRealRsLeader) {
             primaryPreset = 'RS_LEADER';
             primarySetup = 'RS LEADER';
@@ -2032,6 +2216,7 @@ async function handleScan(req, res, parsedUrl) {
 
           // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
           const matchedPresets = ['ALL', primaryPreset];
+          if (isRealRsLineBreakout && !matchedPresets.includes('RS_LINE_BREAKOUT')) matchedPresets.push('RS_LINE_BREAKOUT');
           if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
           if (h1_aboveAll) matchedPresets.push('H1_BULL');
           if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2043,12 +2228,11 @@ async function handleScan(req, res, parsedUrl) {
             ALL: { name: primarySetup, desc: primaryDesc },
             [primaryPreset]: { name: primarySetup, desc: primaryDesc }
           };
+          if (isRealRsLineBreakout) matchedSetups.RS_LINE_BREAKOUT = { name: '🎯 RS LINE BREAKOUT (ต้นรอบ)', desc: 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 ไม่ไล่ดอย' };
           if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
           if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
           if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
           if (h4_aboveAll) matchedSetups.H4_BULL = { name: 'H4 BULL ZONE', desc: 'แท่งเทียน H4 ปิดเหนือ EMA 20, 50, 200' };
-          if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
-          if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'WINNER IN ZONE', desc: 'หุ้นชนะตลาดที่ยืนในโซน EMA ขาขึ้น' };
           if (tripleConfluence) matchedSetups.TRIPLE_CONFLUENCE = { name: 'TRIPLE CONFLUENCE', desc: 'แท่งเทียนยืนเหนือ EMA 20/50/200 ครบทั้ง H1, H2, H4' };
           if (isWinnerInZone) matchedSetups.WINNER_IN_ZONE = { name: 'ALPHA WINNER IN ZONE', desc: 'หุ้นชนะตลาด และยังยืนหยัดในโซน EMA แข็งแกร่ง' };
 
@@ -2144,7 +2328,7 @@ async function handleScan(req, res, parsedUrl) {
 
         // Preset Counts
         const presetCounts = { ALL: processedStocks.length };
-        for (const p of ['NEW_ENTRANT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
           presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
         }
 
@@ -2246,7 +2430,8 @@ async function handleScan(req, res, parsedUrl) {
               basket4: buildForwardBasket(defensiveCandidates, 4),
               basket5: buildForwardBasket(defensiveCandidates, 5)
             }
-          }
+          },
+          swapAdvice: buildSwapAdvice(balancedCandidates, processedStocks, market === 'TH' ? '฿' : '$')
         };
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -2303,6 +2488,8 @@ async function handleScan(req, res, parsedUrl) {
         let advancers = 0, decliners = 0, unchanged = 0;
         let actualTradingDateFound = selectedDate;
 
+        const benchCandles = await fetchBenchmarkCandles(market);
+
         const concurrency = 8;
         let currentIndex = 0;
 
@@ -2322,6 +2509,10 @@ async function handleScan(req, res, parsedUrl) {
               }
 
               if (targetIdx < 20) continue;
+
+              // Calculate Authentic RS Line vs Benchmark (QQQ for US, SET for TH)
+              const rsLineRes = calculateRSLine(candles.slice(0, targetIdx + 1), benchCandles);
+              const rsObj = rsLineRes.summary || {};
 
               const cTarget = candles[targetIdx];
               actualTradingDateFound = cTarget.dateStr;
@@ -2514,6 +2705,11 @@ async function handleScan(req, res, parsedUrl) {
               // Sharp Non-Overlapping Strategy Classification (Historical):
               const isRealBreakout = isUptrend && close >= high20 && (rvol >= 1.3 || volPctOf50D >= 130) && changePct >= 1.5;
               const isRealPocketPivot = isUptrend && range5DPct <= 6.5 && (rvol >= 1.2 || volPctOf50D >= 120) && isGreenCandle && changePct >= 0.5;
+              // 2.5 RS LINE BREAKOUT (ต้นรอบ ไม่ไล่ดอย):
+              // RS Line New High (20D or 50D) while price is in low-risk pullback zone (distEma20 <= 4.0% near EMA10/20)
+              const isRealRsLineBreakout = isUptrend && (rsObj.isRsLineNewHigh20D || rsObj.isRsLineNewHigh50D) && distEma20 <= 4.0 && close >= ema20 * 0.985;
+
+              // 3. RS LEADER: Pure Market Leader outperforming the index (RS Score >= 75 and changePct > 0)
               const isRealRsLeader = isUptrend && rsScore >= 75 && changePct > 0;
               const isRealEmaBounce = low <= ema20 * 1.01 && close >= ema20 * 1.005 && isGreenCandle;
               const isRealVcp = isUptrend && range5DPct <= 4.5 && rvol <= 0.85 && dayRangePct <= 3.5;
@@ -2531,6 +2727,10 @@ async function handleScan(req, res, parsedUrl) {
                 primaryPreset = 'POCKET_PIVOT';
                 primarySetup = 'POCKET PIVOT';
                 primaryDesc = 'ราคาทรงตัวในฐาน + มีเงินใหญ่แอบสะสม';
+              } else if (isRealRsLineBreakout) {
+                primaryPreset = 'RS_LINE_BREAKOUT';
+                primarySetup = 'RS LINE BREAKOUT';
+                primaryDesc = 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 (ต้นรอบ ไม่ไล่ดอย)';
               } else if (isRealRsLeader) {
                 primaryPreset = 'RS_LEADER';
                 primarySetup = 'RS LEADER';
@@ -2573,6 +2773,7 @@ async function handleScan(req, res, parsedUrl) {
 
               // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
               const matchedPresets = ['ALL', primaryPreset];
+              if (isRealRsLineBreakout && !matchedPresets.includes('RS_LINE_BREAKOUT')) matchedPresets.push('RS_LINE_BREAKOUT');
               if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
               if (h1_aboveAll) matchedPresets.push('H1_BULL');
               if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2584,6 +2785,7 @@ async function handleScan(req, res, parsedUrl) {
                 ALL: { name: primarySetup, desc: primaryDesc },
                 [primaryPreset]: { name: primarySetup, desc: primaryDesc }
               };
+              if (isRealRsLineBreakout) matchedSetups.RS_LINE_BREAKOUT = { name: '🎯 RS LINE BREAKOUT (ต้นรอบ)', desc: 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 ไม่ไล่ดอย' };
               if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
               if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
               if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
@@ -2699,6 +2901,12 @@ async function handleScan(req, res, parsedUrl) {
                 impactLabel: catInfo.impactLabel,
                 impactColor: catInfo.impactColor,
                 catalystSummary: catInfo.impactReason,
+                rsLine: rsObj.rsLineVal,
+                rsLineSma21: rsObj.rsLineSma21,
+                isRsLineNewHigh20D: Boolean(rsObj.isRsLineNewHigh20D),
+                isRsLineNewHigh50D: Boolean(rsObj.isRsLineNewHigh50D),
+                rsSlope5D: rsObj.rsSlope5D,
+                rsHookDown: Boolean(rsObj.rsHookDown),
                 isNewEntrant,
                 outcome,
                 isHistorical: true,
@@ -2717,7 +2925,7 @@ async function handleScan(req, res, parsedUrl) {
 
         // Preset Counts
         const presetCounts = { ALL: processedStocks.length };
-        for (const p of ['NEW_ENTRANT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
           presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
         }
 
@@ -2865,7 +3073,8 @@ async function handleScan(req, res, parsedUrl) {
               basket4: buildHistoricalBasket(histDefensive.length >= 4 ? histDefensive : histBalanced, 4),
               basket5: buildHistoricalBasket(histDefensive.length >= 5 ? histDefensive : histBalanced, 5)
             }
-          }
+          },
+          swapAdvice: buildSwapAdvice(histBalanced, processedStocks, market === 'TH' ? '฿' : '$')
         };
 
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -2920,10 +3129,11 @@ async function handleChart(req, res, symbol, parsedUrl) {
     const activeMarketSessionDate = getMarketActiveSessionDate(queryMarket);
     const isHistorical = queryDate ? queryDate < activeMarketSessionDate : false;
 
-    // Fetch candles & financials concurrently
-    const [candles, financials] = await Promise.all([
+    // Fetch candles, financials & benchmark concurrently
+    const [candles, financials, benchCandles] = await Promise.all([
       fetchStockHistory(cleanSymbol, queryMarket),
-      fetchStockFinancials(cleanSymbol, queryMarket)
+      fetchStockFinancials(cleanSymbol, queryMarket),
+      fetchBenchmarkCandles(queryMarket)
     ]);
 
     if (!candles || candles.length === 0) {
@@ -2946,6 +3156,9 @@ async function handleChart(req, res, symbol, parsedUrl) {
 
     const actualTargetDate = candles[targetIndex]?.dateStr || activeMarketSessionDate;
 
+    // Authentic RS Line Calculation vs Benchmark (QQQ for US, SET for TH)
+    const rsResult = calculateRSLine(candles, benchCandles);
+
     // Technical Indicators calculations (EMA 5, 20, 50)
     const closes = candles.map(c => c.close);
     const ema5Arr = calculateEMA(closes, 5);
@@ -2965,6 +3178,10 @@ async function handleChart(req, res, symbol, parsedUrl) {
       candles[i].macd = macdObj.macdLine[i];
       candles[i].macdSignal = macdObj.signalLine[i];
       candles[i].macdHist = macdObj.histogram[i];
+      candles[i].rsLine = rsResult.candles[i]?.rsLine ?? null;
+      candles[i].rsLineSma21 = rsResult.candles[i]?.rsLineSma21 ?? null;
+      candles[i].isRsNewHigh = Boolean(rsResult.candles[i]?.isRsNewHigh);
+      candles[i].isRsNewHigh50 = Boolean(rsResult.candles[i]?.isRsNewHigh50);
     }
 
     // Two-Tone Volume Profile calculation (Point of Control POC)
@@ -3063,6 +3280,14 @@ async function handleChart(req, res, symbol, parsedUrl) {
       candles,
       financials,
       intradayEma,
+      rsMetrics: {
+        rsLine: candles[targetIndex]?.rsLine,
+        rsLineSma21: candles[targetIndex]?.rsLineSma21,
+        isRsLineNewHigh20D: candles[targetIndex]?.isRsNewHigh,
+        isRsLineNewHigh50D: candles[targetIndex]?.isRsNewHigh50,
+        benchmarkSymbol: queryMarket === 'US' ? 'QQQ' : 'SET',
+        distEma20: ema20Arr[targetIndex] > 0 ? Math.round(((candles[targetIndex]?.close - ema20Arr[targetIndex]) / ema20Arr[targetIndex]) * 10000) / 100 : 0
+      },
       volumeProfile: {
         bins: volumeBins,
         poc,

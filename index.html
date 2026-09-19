@@ -75,6 +75,7 @@
     const PRESETS = [
       { id: 'ALL', name: '🎯 All Quality Setups', desc: 'หุ้นพื้นฐานเทคนิคทรงสวย คะแนนรวม 60+' },
       { id: 'NEW_ENTRANT', name: '✨ Fresh Breakout (ต้นรอบ)', desc: 'พึ่งเกิดสัญญาณเข้าวันแรก (Day 1) ไม่เคยติดใน 3 วันก่อนหน้า ราคาพึ่งข้ามหรือเบรคแนวรับ' },
+      { id: 'RS_LINE_BREAKOUT', name: '🎯 RS Line Breakout', desc: 'เส้น RS ทำ New High สวนตลาด + พักตัวโซน EMA10/20 (ต้นรอบ ไม่ไล่ดอย)' },
       { id: 'BREAKOUT', name: '🚀 Volume Breakout', desc: 'เบรคทะลุ High วอลุ่มพุ่งแรง (RVOL > 115%)' },
       { id: 'POCKET_PIVOT', name: '💎 Pocket Pivot', desc: 'เงินใหญ่สะสมในกรอบฐาน เหนือ EMA10/20' },
       { id: 'VCP', name: '🌪️ VCP Squeeze', desc: 'กรอบแคบมาก (<5.5%) วอลุ่มแห้ง รอกระชาก' },
@@ -1483,6 +1484,11 @@
                                         <span className={`font-bold text-[11px] px-2.5 py-0.5 rounded-md w-max border ${badgeStyle}`}>
                                           {setupName}
                                         </span>
+                                        {item.matchedPresets && item.matchedPresets.includes('RS_LINE_BREAKOUT') && selectedPreset !== 'RS_LINE_BREAKOUT' && (
+                                          <span className="font-bold text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40" title="เส้น RS Line ทำ New High สวนตลาด และอยู่ใกล้โซนแนวรับ EMA10/20 ไม่ไล่ดอย">
+                                            🎯 RS Line Breakout
+                                          </span>
+                                        )}
                                       </div>
                                       <span className="text-[10px] text-slate-400 mt-0.5">
                                         {setupDesc}
@@ -2408,6 +2414,75 @@
               )
             )}
 
+            {/* Capital Swap Advisor (RS Divergence Cross Rule) */}
+            {sim.swapAdvice && (
+              <div className="bg-gradient-to-r from-dark-950 via-dark-900 to-dark-950 border border-amber-500/40 rounded-2xl p-4 space-y-2.5 shadow-xl font-sans">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dark-800 pb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-lg">🔄</span>
+                    <span className="font-black text-sm text-amber-300">
+                      CAPITAL SWAP ADVISOR (กฎการสับตัวตามสภาวะ RS Divergence Cross)
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    🛡️ Barbell Structure Engine
+                  </span>
+                </div>
+
+                {sim.swapAdvice.hasSwap ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* Sell Card */}
+                    <div className="bg-rose-950/30 border border-rose-500/30 p-3 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-rose-400 font-bold flex items-center space-x-1">
+                          <span>✂️</span>
+                          <span>1. หุ้นที่ต้อง CUT / SELL ทิ้ง 100%:</span>
+                        </span>
+                        <span className="text-rose-300 font-mono font-black text-sm">{sim.swapAdvice.sellStock.symbol}</span>
+                      </div>
+                      <div className="text-slate-300 text-[11px] leading-relaxed">
+                        {sim.swapAdvice.sellStock.reason}
+                      </div>
+                      <div className="text-slate-400 font-mono text-[10px]">
+                        ราคา: {currency}{sim.swapAdvice.sellStock.price} ({sim.swapAdvice.sellStock.changePct > 0 ? '+' : ''}{sim.swapAdvice.sellStock.changePct}%)
+                      </div>
+                    </div>
+
+                    {/* Buy Card */}
+                    <div className="bg-emerald-950/30 border border-emerald-500/30 p-3 rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                          <span>🚀</span>
+                          <span>2. สับเงินย้ายเข้าตัวต้นรอบทันที:</span>
+                        </span>
+                        <span className="text-emerald-300 font-mono font-black text-sm">{sim.swapAdvice.buyStock.symbol}</span>
+                      </div>
+                      <div className="text-slate-300 text-[11px] leading-relaxed">
+                        {sim.swapAdvice.buyStock.reason}
+                      </div>
+                      <div className="text-slate-400 font-mono text-[10px]">
+                        ราคา: {currency}{sim.swapAdvice.buyStock.price} • RS: {sim.swapAdvice.buyStock.rsScore} • ใกล้ EMA20: {sim.swapAdvice.buyStock.distEma20 > 0 ? '+' : ''}{sim.swapAdvice.buyStock.distEma20}%
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 flex items-center space-x-2 bg-dark-900/60 p-2.5 rounded-xl border border-dark-800">
+                    <span>✅</span>
+                    <span>{sim.swapAdvice.action || 'ไม่มีสัญญาณสับตัว (หุ้นในพอร์ตยังคงยืนหยัดเหนือ EMA20 หรือยังไม่พบการ Diverge หลุดแนวรับ)'}</span>
+                  </div>
+                )}
+
+                <div className="text-[11px] text-slate-400 border-t border-dark-800/80 pt-2 flex flex-wrap items-center justify-between gap-2">
+                  <span>💡 <b>เป้าหมายกลยุทธ์:</b> เมื่อตลาด Nasdaq/SET แดง -1.5% พอร์ตจะไม่โดนลากลงตาม และยังคงยืนเขียวได้</span>
+                  {sim.swapAdvice.hasSwap && (
+                    <span className="text-amber-300 font-mono font-bold">
+                      ⚡ คำแนะนำ: {sim.swapAdvice.action}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Holdings Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
@@ -2575,11 +2650,13 @@
         ctx.clearRect(0, 0, width, height);
 
         // Sub-panel layouts
-        const mainChartHeight = height * 0.58;
-        const macdTop = height * 0.60;
-        const macdHeight = height * 0.18;
-        const rsiTop = height * 0.80;
-        const rsiHeight = height * 0.17;
+        const mainChartHeight = height * 0.48;
+        const rsTop = height * 0.50;
+        const rsHeight = height * 0.15;
+        const macdTop = height * 0.67;
+        const macdHeight = height * 0.15;
+        const rsiTop = height * 0.84;
+        const rsiHeight = height * 0.14;
 
         const leftMargin = 10;
         const rightMargin = 75;
@@ -2821,6 +2898,95 @@
             ctx.font = 'bold 10px JetBrains Mono';
             ctx.fillText(`POC:${vp.poc}`, leftMargin + plotWidth + profileWidth + 6, pocY + 4);
           }
+        }
+
+        // --- RS LINE SUB-PANEL (AUTHENTIC BENCHMARK RATIO) ---
+        ctx.strokeStyle = '#1e2d4a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(leftMargin, rsTop, plotWidth, rsHeight);
+
+        let minRs = Infinity, maxRs = -Infinity;
+        candles.forEach(c => {
+          if (c.rsLine !== undefined && c.rsLine !== null) {
+            if (c.rsLine < minRs) minRs = c.rsLine;
+            if (c.rsLine > maxRs) maxRs = c.rsLine;
+          }
+          if (c.rsLineSma21 !== undefined && c.rsLineSma21 !== null) {
+            if (c.rsLineSma21 < minRs) minRs = c.rsLineSma21;
+            if (c.rsLineSma21 > maxRs) maxRs = c.rsLineSma21;
+          }
+        });
+        if (minRs === Infinity || maxRs === -Infinity) {
+          minRs = 50; maxRs = 150;
+        }
+        const rsPad = (maxRs - minRs) * 0.1 || 1;
+        minRs -= rsPad;
+        maxRs += rsPad;
+        const rsRange = Math.max(0.1, maxRs - minRs);
+        const getRsY = (val) => rsTop + rsHeight - ((val - minRs) / rsRange) * rsHeight;
+
+        // Draw RS 21-SMA Line (Amber)
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        let rsSmaStarted = false;
+        candles.forEach((c, idx) => {
+          if (c.rsLineSma21 !== undefined && c.rsLineSma21 !== null) {
+            const x = leftMargin + (idx * (plotWidth / candles.length)) + (barWidth / 2);
+            const y = getRsY(c.rsLineSma21);
+            if (!rsSmaStarted) { ctx.moveTo(x, y); rsSmaStarted = true; }
+            else { ctx.lineTo(x, y); }
+          }
+        });
+        if (rsSmaStarted) ctx.stroke();
+
+        // Draw RS Line (Cyan)
+        ctx.strokeStyle = '#06b6d4';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        let rsStarted = false;
+        candles.forEach((c, idx) => {
+          if (c.rsLine !== undefined && c.rsLine !== null) {
+            const x = leftMargin + (idx * (plotWidth / candles.length)) + (barWidth / 2);
+            const y = getRsY(c.rsLine);
+            if (!rsStarted) { ctx.moveTo(x, y); rsStarted = true; }
+            else { ctx.lineTo(x, y); }
+          }
+        });
+        if (rsStarted) ctx.stroke();
+
+        // Draw Glowing RS New High Markers
+        candles.forEach((c, idx) => {
+          if (c.isRsNewHigh && c.rsLine !== undefined && c.rsLine !== null) {
+            const x = leftMargin + (idx * (plotWidth / candles.length)) + (barWidth / 2);
+            const y = getRsY(c.rsLine);
+
+            // Glowing Outer Ring
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.40)';
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner Bright Dot
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+
+        // Label on RS Sub-panel
+        const benchName = chartData.rsMetrics?.benchmarkSymbol || (market === 'US' ? 'QQQ' : 'SET');
+        const lastRsVal = candles[candles.length - 1]?.rsLine || 0;
+        const isTargetNewHigh = candles[adjustedTargetIdx]?.isRsNewHigh;
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 10px JetBrains Mono';
+        ctx.fillText(`RS Line vs ${benchName}: ${lastRsVal.toFixed(2)} | SMA21 (Amber)`, leftMargin + 6, rsTop + 14);
+
+        if (isTargetNewHigh) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.font = 'bold 10px Prompt';
+          ctx.fillText(`🔥 RS NEW HIGH (ต้นรอบ)`, leftMargin + 240, rsTop + 14);
         }
 
         // --- MACD SUB-PANEL ---
@@ -3397,21 +3563,26 @@
                 <span className="w-3 h-1 bg-[#f59e0b] rounded-r"></span>
                 <span className="text-amber-400 font-bold">Volume Profile (Buy/Sell) + POC</span>
               </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-3 h-1 bg-[#06b6d4] rounded"></span>
+                <span className="w-3 h-1 bg-[#f59e0b] rounded"></span>
+                <span className="text-cyan-300 font-bold">RS Line ({market === 'US' ? 'vs QQQ' : 'vs SET'}) + SMA 21</span>
+              </div>
               <div className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span><span>MACD</span></div>
               <div className="flex items-center space-x-1.5"><span className="w-3 h-1 bg-[#c084fc] rounded"></span><span className="text-purple-300">RSI 14 + SMA</span></div>
             </div>
 
             {loading ? (
-              <div className="h-[520px] flex items-center justify-center space-x-2 text-slate-400">
+              <div className="h-[560px] flex items-center justify-center space-x-2 text-slate-400">
                 <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                <span>กำลังโหลดข้อมูลกราฟ Fact พร้อม EMA 5/20/50, MACD, RSI, Volume Profile POC, และงบการเงิน...</span>
+                <span>กำลังโหลดข้อมูลกราฟ Fact พร้อม RS Line, EMA 5/20/50, MACD, RSI, Volume Profile POC, และงบการเงิน...</span>
               </div>
             ) : error ? (
-              <div className="h-[520px] flex items-center justify-center text-rose-400">
+              <div className="h-[560px] flex items-center justify-center text-rose-400">
                 {error}
               </div>
             ) : (
-              <div className="relative w-full h-[540px]">
+              <div className="relative w-full h-[600px]">
                 <canvas ref={canvasRef} className="w-full h-full block" />
               </div>
             )}
