@@ -84,6 +84,40 @@
       { id: 'MACD_MOMENTUM', name: '⚡ Momentum Rise', desc: 'เส้นค่าเฉลี่ยเรียงตัวสวย โมเมนตัมพุ่ง' },
     ];
 
+    // Capital Swap (RS Divergence Cross) Presets - ข้อ 1, 2, 3
+    const SWAP_PRESETS = [
+      {
+        id: 'SWAP_STEP_1_SELL',
+        stepBadge: 'ข้อ 1',
+        stepIcon: '✂️',
+        name: '✂️ [ข้อ 1] สัญญาณ SELL หุ้น A (หลุด EMA20 + RS หักหัว)',
+        shortName: '✂️ [ข้อ 1] SELL หุ้น A',
+        desc: 'หลุด EMA20 และเงินสถาบันไหลออก (RS หักหัว/ใต้ SMA21/Alpha ติดลบ) -> สัญญาณ Cut/Sell 100% สับเงินออก',
+        activeClass: 'bg-gradient-to-r from-rose-600 to-red-700 text-white border-rose-400 shadow-lg shadow-rose-600/30 ring-2 ring-rose-400/30',
+        badgeClass: 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+      },
+      {
+        id: 'SWAP_STEP_2_LEADER',
+        stepBadge: 'ข้อ 2',
+        stepIcon: '👑',
+        name: '👑 [ข้อ 2] สัญญาณ LEADER หุ้น B (RS New High สวนตลาด)',
+        shortName: '👑 [ข้อ 2] LEADER หุ้น B',
+        desc: 'เส้น RS Line พุ่งทะลุต้านเดิมทำ New High สวนตลาด หรือ Alpha ชนะตลาดเด็ดขาด -> ตัวเล็งย้ายเงินเข้า',
+        activeClass: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400 shadow-lg shadow-purple-600/30 ring-2 ring-purple-400/30',
+        badgeClass: 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+      },
+      {
+        id: 'SWAP_STEP_3_PULLBACK',
+        stepBadge: 'ข้อ 3',
+        stepIcon: '🎯',
+        name: '🎯 [ข้อ 3] จุดสับเงินเข้าต้นรอบ (Pullback ทดสอบ EMA10/20)',
+        shortName: '🎯 [ข้อ 3] สับเงินเข้าต้นรอบ',
+        desc: 'หุ้นนำตลาดที่ย่อทดสอบแนวรับแรก EMA 10 หรือ 20 (distEma20 <= 4%) -> จังหวะเข้าซื้อต้นรอบ ไม่ไล่ดอย',
+        activeClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400 shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/30',
+        badgeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+      }
+    ];
+
     // Thai Universes
     const THAI_UNIVERSES = [
       { id: 'ALL', name: 'ทั้งตลาด (SET+mai)', count: '880+ ตัว', icon: '🌐' },
@@ -199,6 +233,7 @@
       const [universe, setUniverse] = useState('ALL');
       const [customStocks, setCustomStocks] = useState(DEFAULT_THAI_STOCKS.join(', '));
       const [selectedPreset, setSelectedPreset] = useState('ALL');
+      const [strategySet, setStrategySet] = useState('CLASSIC'); // 'CLASSIC' | 'SWAP_SET'
       const [selectedSector, setSelectedSector] = useState('ALL');
       const [minValue, setMinValue] = useState(0);
       const [searchQuery, setSearchQuery] = useState('');
@@ -370,11 +405,14 @@
 
       // Preset Counts
       const presetCounts = useMemo(() => {
-        const counts = { ALL: allScannedStocks.length };
+        const counts = { ALL: allScannedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes('ALL')).length };
         PRESETS.forEach(p => {
           if (p.id !== 'ALL') {
             counts[p.id] = allScannedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p.id)).length;
           }
+        });
+        SWAP_PRESETS.forEach(p => {
+          counts[p.id] = allScannedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p.id)).length;
         });
         return counts;
       }, [allScannedStocks]);
@@ -1008,36 +1046,43 @@
 
             {viewMode === 'table' ? (
               <>
-            {/* Strategy Presets Tabs with Live Badges */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-dark-800">
-              <span className="text-xs font-bold text-slate-400 mr-1 flex items-center space-x-1">
-                <span>🎯</span>
-                <span>กลยุทธ์:</span>
-              </span>
-              {PRESETS.map(preset => {
-                const count = presetCounts[preset.id] || 0;
-                const isActive = selectedPreset === preset.id;
-
-                return (
+            {/* Strategy Set Switcher (Classic vs ชุดกลยุทธ์สับตัว RS Divergence ข้อ 1, 2, 3) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 pb-1 border-t border-dark-800">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-slate-400">ชุดกลยุทธ์:</span>
+                <div className="inline-flex p-1 bg-dark-950 border border-dark-700/80 rounded-xl space-x-1">
                   <button
-                    key={preset.id}
-                    onClick={() => setSelectedPreset(preset.id)}
-                    className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
-                      isActive
-                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-400 shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400/30'
-                        : 'bg-dark-900/80 hover:bg-dark-850 text-slate-300 border-dark-700 hover:border-dark-600'
+                    onClick={() => {
+                      setStrategySet('CLASSIC');
+                      if (['SWAP_STEP_1_SELL', 'SWAP_STEP_2_LEADER', 'SWAP_STEP_3_PULLBACK'].includes(selectedPreset)) {
+                        setSelectedPreset('ALL');
+                      }
+                    }}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      strategySet === 'CLASSIC'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-dark-850'
                     }`}
-                    title={preset.desc}
                   >
-                    <span>{preset.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                      isActive ? 'bg-white/25 text-white' : count > 0 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-dark-950 text-slate-500'
-                    }`}>
-                      {count}
-                    </span>
+                    <span>🎯</span>
+                    <span>ชุดกลยุทธ์หลักทั่วไป (Classic Quality)</span>
                   </button>
-                );
-              })}
+                  <button
+                    onClick={() => {
+                      setStrategySet('SWAP_SET');
+                      setSelectedPreset('SWAP_STEP_1_SELL');
+                    }}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      strategySet === 'SWAP_SET'
+                        ? 'bg-gradient-to-r from-amber-600 to-rose-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400/40'
+                        : 'text-amber-400/90 hover:text-amber-300 hover:bg-dark-850'
+                    }`}
+                  >
+                    <span>🔄</span>
+                    <span>ชุดกลยุทธ์สับตัว RS Divergence (ข้อ 1, 2, 3) 🔥</span>
+                  </button>
+                </div>
+              </div>
 
               <div className="ml-auto flex items-center space-x-2">
                 <input
@@ -1049,6 +1094,93 @@
                 />
               </div>
             </div>
+
+            {/* Sub-Tabs based on Active Strategy Set */}
+            {strategySet === 'CLASSIC' ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs font-bold text-slate-400 mr-1 flex items-center space-x-1">
+                  <span>🎯</span>
+                  <span>กลยุทธ์:</span>
+                </span>
+                {PRESETS.map(preset => {
+                  const count = presetCounts[preset.id] || 0;
+                  const isActive = selectedPreset === preset.id;
+
+                  return (
+                    <button
+                      key={preset.id}
+                      onClick={() => setSelectedPreset(preset.id)}
+                      className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                        isActive
+                          ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-400 shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400/30'
+                          : 'bg-dark-900/80 hover:bg-dark-850 text-slate-300 border-dark-700 hover:border-dark-600'
+                      }`}
+                      title={preset.desc}
+                    >
+                      <span>{preset.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                        isActive ? 'bg-white/25 text-white' : count > 0 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-dark-950 text-slate-500'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col space-y-2 pt-1">
+                {/* Swap Strategy Header Banner */}
+                <div className="p-3 bg-gradient-to-r from-dark-900 via-dark-850 to-dark-900 border border-amber-500/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-lg border border-amber-500/30 flex-shrink-0">
+                      🔄
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-100 flex items-center space-x-2">
+                        <span>กฎการ "สับตัว (Capital Swap)" แบบ RS Divergence Cross (ไม่คร่อมรอบ ไม่ไล่ดอย)</span>
+                      </div>
+                      <div className="text-slate-400 text-[11px] mt-0.5">
+                        <span className="text-rose-400 font-semibold">[ข้อ 1] หุ้น A หลุด EMA20 + RS หักหัว</span> ➜ Cut/Sell 100% | 
+                        <span className="text-purple-400 font-semibold ml-1">[ข้อ 2] หุ้น B ทำ RS New High</span> ➜ เล็งย้ายเงินเข้า | 
+                        <span className="text-emerald-400 font-semibold ml-1">[ข้อ 3] สับเงินเข้าทันทีเมื่อ B ย่อทดสอบ EMA10/20</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3 Dedicated Action Tabs */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-xs font-bold text-slate-400 mr-1 flex items-center space-x-1">
+                    <span>⚡</span>
+                    <span>ขั้นตอนสับตัว:</span>
+                  </span>
+                  {SWAP_PRESETS.map(preset => {
+                    const count = presetCounts[preset.id] || 0;
+                    const isActive = selectedPreset === preset.id;
+
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => setSelectedPreset(preset.id)}
+                        className={`flex items-center space-x-2.5 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                          isActive
+                            ? preset.activeClass
+                            : 'bg-dark-900/80 hover:bg-dark-850 text-slate-300 border-dark-700 hover:border-dark-600'
+                        }`}
+                        title={preset.desc}
+                      >
+                        <span>{preset.name}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                          isActive ? 'bg-white/25 text-white' : count > 0 ? preset.badgeClass : 'bg-dark-950 text-slate-500'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Intraday EMA Trend Zone (H1 / H2 / H4) Filter Toolbar */}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-dark-800">
@@ -1470,6 +1602,9 @@
                                   const setupDesc = item.matchedSetups?.[selectedPreset]?.desc || item.setupDesc || 'แนวโน้มขาขึ้นทรงสวย';
 
                                   const badgeStyle =
+                                    setupName.includes('SELL') || setupName.includes('ตัดขาดทุน') || setupName.includes('ข้อ 1') ? 'bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20' :
+                                    setupName.includes('LEADER') || setupName.includes('ข้อ 2') ? 'bg-purple-500/25 text-purple-300 border-purple-500/50 shadow-sm shadow-purple-500/20' :
+                                    setupName.includes('สับเงิน') || setupName.includes('ข้อ 3') ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20' :
                                     setupName.includes('FRESH') || setupName.includes('NEW') ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
                                     setupName.includes('BREAKOUT') ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' :
                                     setupName.includes('POCKET') ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :

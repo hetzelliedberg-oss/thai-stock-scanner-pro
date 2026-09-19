@@ -2168,9 +2168,20 @@ async function handleScan(req, res, parsedUrl) {
           // 6. MOMENTUM RISE: Moving averages aligned (Price > EMA5 > EMA20)
           const isRealMomentum = close >= ema5 && ema5 >= ema20 && changePct >= 0;
 
+          // ชุดกลยุทธ์สับตัว RS Divergence Cross (แยกเป็นชุด ข้อ 1, 2, 3):
+          // ข้อ 1: หุ้น A ในพอร์ต - สัญญาณ Sell/Cut (ราคาหลุด EMA 20 วัน + RS Line หรือโมเมนตัมหักหัวลง)
+          const isSwapSell_A = !isUptrend && (distEma20 < 0 || close < ema20) && (alpha < 0 || changePct < 0 || rsScore < 50);
+
+          // ข้อ 2: หุ้น B ตัวเล็งไว้ - สัญญาณ Leader (RS Line แกร่ง / Alpha ชนะตลาดสวนดัชนี)
+          const isSwapLead_B = isUptrend && (alpha >= 1.0 || (changePct > 0 && (primaryBench.changePct || 0) <= 0) || rsScore >= 70);
+
+          // ข้อ 3: จุดสับเงินเข้าต้นรอบ (Pullback ทดสอบ EMA 10 หรือ 20 ไม่ไล่ดอย)
+          const isSwapEntry_3 = isSwapLead_B && distEma20 <= 4.0 && close >= ema20 * 0.985;
+
           let primaryPreset = null;
           let primarySetup = '';
           let primaryDesc = '';
+          let isSellStockA = false;
 
           if (isRealBreakout) {
             primaryPreset = 'BREAKOUT';
@@ -2204,6 +2215,11 @@ async function handleScan(req, res, parsedUrl) {
             primaryPreset = 'MACD_MOMENTUM';
             primarySetup = 'MACD MOMENTUM';
             primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
+          } else if (isSwapSell_A) {
+            isSellStockA = true;
+            primaryPreset = 'SWAP_STEP_1_SELL';
+            primarySetup = '✂️ [ข้อ 1] สัญญาณ SELL หุ้น A';
+            primaryDesc = 'หลุด EMA20 และเงินสถาบันเริ่มไหลออก (Cut 100%)';
           } else {
             continue;
           }
@@ -2215,8 +2231,11 @@ async function handleScan(req, res, parsedUrl) {
           const isNewEntrant = !wasInScannerYesterday && (close >= ema20) && (changePct > 0) && (distEma20 <= 4.5);
 
           // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
-          const matchedPresets = ['ALL', primaryPreset];
+          const matchedPresets = isSellStockA ? [primaryPreset] : ['ALL', primaryPreset];
           if (isRealRsLineBreakout && !matchedPresets.includes('RS_LINE_BREAKOUT')) matchedPresets.push('RS_LINE_BREAKOUT');
+          if (isSwapSell_A && !matchedPresets.includes('SWAP_STEP_1_SELL')) matchedPresets.push('SWAP_STEP_1_SELL');
+          if (isSwapLead_B) matchedPresets.push('SWAP_STEP_2_LEADER');
+          if (isSwapEntry_3) matchedPresets.push('SWAP_STEP_3_PULLBACK');
           if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
           if (h1_aboveAll) matchedPresets.push('H1_BULL');
           if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2229,6 +2248,9 @@ async function handleScan(req, res, parsedUrl) {
             [primaryPreset]: { name: primarySetup, desc: primaryDesc }
           };
           if (isRealRsLineBreakout) matchedSetups.RS_LINE_BREAKOUT = { name: '🎯 RS LINE BREAKOUT (ต้นรอบ)', desc: 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 ไม่ไล่ดอย' };
+          if (isSwapSell_A) matchedSetups.SWAP_STEP_1_SELL = { name: '✂️ [ข้อ 1] สัญญาณ SELL หุ้น A', desc: 'หลุด EMA20 และเงินสถาบันเริ่มไหลออก (Cut 100%)' };
+          if (isSwapLead_B) matchedSetups.SWAP_STEP_2_LEADER = { name: '👑 [ข้อ 2] หุ้น B เงินสถาบันเข้า', desc: 'RS Line แกร่งทะลุต้าน สวนทางตลาด' };
+          if (isSwapEntry_3) matchedSetups.SWAP_STEP_3_PULLBACK = { name: '🎯 [ข้อ 3] จุดสับเงินเข้าต้นรอบ', desc: 'ย่อทดสอบแนวรับแรก EMA 10 หรือ 20 (ไม่ไล่ดอย)' };
           if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
           if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
           if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
@@ -2327,8 +2349,8 @@ async function handleScan(req, res, parsedUrl) {
         const heatmap = buildSectorHeatmap(processedStocks);
 
         // Preset Counts
-        const presetCounts = { ALL: processedStocks.length };
-        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+        const presetCounts = { ALL: processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes('ALL')).length };
+        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM', 'SWAP_STEP_1_SELL', 'SWAP_STEP_2_LEADER', 'SWAP_STEP_3_PULLBACK']) {
           presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
         }
 
@@ -2715,9 +2737,20 @@ async function handleScan(req, res, parsedUrl) {
               const isRealVcp = isUptrend && range5DPct <= 4.5 && rvol <= 0.85 && dayRangePct <= 3.5;
               const isRealMomentum = close >= ema5 && ema5 >= ema20 && changePct >= 0;
 
+              // ชุดกลยุทธ์สับตัว RS Divergence Cross (แยกเป็นชุด ข้อ 1, 2, 3):
+              // ข้อ 1: หุ้น A ในพอร์ต - สัญญาณ Sell/Cut (ราคาหลุด EMA 20 วัน + RS Line หรือโมเมนตัมหักหัวลง)
+              const isSwapSell_A = !isUptrend && (close < ema20 || distEma20 < 0) && (Boolean(rsObj.rsHookDown) || (rsObj.rsSlope5D !== undefined && rsObj.rsSlope5D < 0) || changePct < 0);
+
+              // ข้อ 2: หุ้น B ตัวเล็งไว้ - สัญญาณ Leader (RS Line ทำ New High 20D/50D หรือ RS Score >= 75)
+              const isSwapLead_B = isUptrend && (rsObj.isRsLineNewHigh20D || rsObj.isRsLineNewHigh50D || rsScore >= 75);
+
+              // ข้อ 3: จุดสับเงินเข้าต้นรอบ (Pullback ทดสอบ EMA 10 หรือ 20 ไม่ไล่ดอย)
+              const isSwapEntry_3 = isSwapLead_B && distEma20 <= 4.0 && close >= ema20 * 0.985;
+
               let primaryPreset = null;
               let primarySetup = '';
               let primaryDesc = '';
+              let isSellStockA = false;
 
               if (isRealBreakout) {
                 primaryPreset = 'BREAKOUT';
@@ -2751,6 +2784,11 @@ async function handleScan(req, res, parsedUrl) {
                 primaryPreset = 'MACD_MOMENTUM';
                 primarySetup = 'MACD MOMENTUM';
                 primaryDesc = 'หุ้นไต่เทรนด์ขาขึ้น ยืนเหนือแนวรับ EMA20';
+              } else if (isSwapSell_A) {
+                isSellStockA = true;
+                primaryPreset = 'SWAP_STEP_1_SELL';
+                primarySetup = '✂️ [ข้อ 1] สัญญาณ SELL หุ้น A';
+                primaryDesc = 'หลุด EMA20 และเงินสถาบันเริ่มไหลออก (Cut 100%)';
               } else {
                 continue;
               }
@@ -2772,8 +2810,11 @@ async function handleScan(req, res, parsedUrl) {
               const isNewEntrant = (!wasInScannerYesterday && !wasInScanner2DaysAgo) && (close >= ema20) && (changePct > 0) && (distEma20 <= 4.5);
 
               // Mutually Exclusive Presets (แต่ละหุ้นอยู่เฉพาะกลยุทธ์หลักของตนเอง ไม่ซ้ำซ้อน ไม่กลายเป็น Noise):
-              const matchedPresets = ['ALL', primaryPreset];
+              const matchedPresets = isSellStockA ? [primaryPreset] : ['ALL', primaryPreset];
               if (isRealRsLineBreakout && !matchedPresets.includes('RS_LINE_BREAKOUT')) matchedPresets.push('RS_LINE_BREAKOUT');
+              if (isSwapSell_A && !matchedPresets.includes('SWAP_STEP_1_SELL')) matchedPresets.push('SWAP_STEP_1_SELL');
+              if (isSwapLead_B) matchedPresets.push('SWAP_STEP_2_LEADER');
+              if (isSwapEntry_3) matchedPresets.push('SWAP_STEP_3_PULLBACK');
               if (isNewEntrant) matchedPresets.push('NEW_ENTRANT');
               if (h1_aboveAll) matchedPresets.push('H1_BULL');
               if (h2_aboveAll) matchedPresets.push('H2_BULL');
@@ -2786,6 +2827,9 @@ async function handleScan(req, res, parsedUrl) {
                 [primaryPreset]: { name: primarySetup, desc: primaryDesc }
               };
               if (isRealRsLineBreakout) matchedSetups.RS_LINE_BREAKOUT = { name: '🎯 RS LINE BREAKOUT (ต้นรอบ)', desc: 'RS Line ทำ New High สวนตลาด + พักตัวโซน EMA10/20 ไม่ไล่ดอย' };
+              if (isSwapSell_A) matchedSetups.SWAP_STEP_1_SELL = { name: '✂️ [ข้อ 1] สัญญาณ SELL หุ้น A', desc: 'หลุด EMA20 และเงินสถาบันเริ่มไหลออก (Cut 100%)' };
+              if (isSwapLead_B) matchedSetups.SWAP_STEP_2_LEADER = { name: '👑 [ข้อ 2] หุ้น B เงินสถาบันเข้า', desc: 'RS Line แกร่งทะลุต้าน สวนทางตลาด' };
+              if (isSwapEntry_3) matchedSetups.SWAP_STEP_3_PULLBACK = { name: '🎯 [ข้อ 3] จุดสับเงินเข้าต้นรอบ', desc: 'ย่อทดสอบแนวรับแรก EMA 10 หรือ 20 (ไม่ไล่ดอย)' };
               if (isNewEntrant) matchedSetups.NEW_ENTRANT = { name: '✨ FRESH BREAKOUT (ต้นรอบ)', desc: 'พึ่งเริ่มเบรคหรือข้าม EMA20 วันแรก ยังอยู่ใกล้แนวรับ ไม่ไล่ราคาเกิน 4.5%' };
               if (h1_aboveAll) matchedSetups.H1_BULL = { name: 'H1 BULL ZONE', desc: 'แท่งเทียน H1 ปิดเหนือ EMA 20, 50, 200' };
               if (h2_aboveAll) matchedSetups.H2_BULL = { name: 'H2 BULL ZONE', desc: 'แท่งเทียน H2 ปิดเหนือ EMA 20, 50, 200' };
@@ -2924,8 +2968,8 @@ async function handleScan(req, res, parsedUrl) {
         processedStocks.sort((a, b) => b.compScore - a.compScore || b.valueTraded - a.valueTraded);
 
         // Preset Counts
-        const presetCounts = { ALL: processedStocks.length };
-        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM']) {
+        const presetCounts = { ALL: processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes('ALL')).length };
+        for (const p of ['NEW_ENTRANT', 'RS_LINE_BREAKOUT', 'BREAKOUT', 'POCKET_PIVOT', 'VCP', 'EMA20_BOUNCE', 'RS_LEADER', 'MACD_MOMENTUM', 'SWAP_STEP_1_SELL', 'SWAP_STEP_2_LEADER', 'SWAP_STEP_3_PULLBACK']) {
           presetCounts[p] = processedStocks.filter(s => s.matchedPresets && s.matchedPresets.includes(p)).length;
         }
 
