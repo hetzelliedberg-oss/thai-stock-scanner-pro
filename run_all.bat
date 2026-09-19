@@ -33,16 +33,31 @@ if %ERRORLEVEL% NEQ 0 (
     echo [1/3] Backend server is already running on port 3300.
 )
 
-:: 3. Start Cloudflare Tunnel if not already running
-tasklist /fi "imagename eq cloudflared.exe" 2>nul | find /i "cloudflared.exe" >nul
+:: 3. Test existing tunnel health (Self-Healing Check)
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$healthy = $false; " ^
+    "if (Test-Path .\PUBLIC_URL.txt) { " ^
+    "  $u = (Get-Content .\PUBLIC_URL.txt -ErrorAction SilentlyContinue | Out-String).Trim(); " ^
+    "  if ($u -match 'https://.*trycloudflare\.com') { " ^
+    "    try { " ^
+    "      $r = Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; " ^
+    "      if ($r.StatusCode -eq 200) { $healthy = $true; } " ^
+    "    } catch {} " ^
+    "  } " ^
+    "} " ^
+    "if (-not $healthy) { " ^
+    "  Stop-Process -Name 'cloudflared' -Force -ErrorAction SilentlyContinue; " ^
+    "  exit 1; " ^
+    "} else { exit 0; }"
+
 if %ERRORLEVEL% NEQ 0 (
-    echo [2/3] Launching Cloudflare Tunnel...
+    echo [2/3] Launching fresh Cloudflare Tunnel...
     if exist cloudflared.log del cloudflared.log
     start "" /b .\cloudflared.exe tunnel --url http://localhost:3300 --logfile cloudflared.log --no-autoupdate
     echo Waiting for public web link to initialize...
-    timeout /t 5 /nobreak >nul
+    timeout /t 6 /nobreak >nul
 ) else (
-    echo [2/3] Cloudflare Tunnel is already active.
+    echo [2/3] Cloudflare Tunnel is healthy and active.
 )
 
 :: 4. Extract and display public web link
