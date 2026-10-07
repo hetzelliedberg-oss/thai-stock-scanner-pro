@@ -275,7 +275,39 @@ const MIME_TYPES = {
 
 const HISTORICAL_CACHE = new Map();
 const FINANCIALS_CACHE = new Map();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 mins
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 mins for fast-changing live metrics
+const HISTORICAL_CANDLE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours for daily candles
+const CACHE_FILE = path.join(__dirname, 'history_cache.json');
+
+// Auto-hydrate historical candles from disk on startup
+try {
+  if (fs.existsSync(CACHE_FILE)) {
+    const rawDiskCache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'));
+    for (const [k, v] of Object.entries(rawDiskCache)) {
+      if (v && v.candles && v.candles.length) {
+        HISTORICAL_CACHE.set(k, { timestamp: v.timestamp || Date.now(), candles: v.candles });
+      }
+    }
+    console.log(`[Cache Hydrated] Loaded ${HISTORICAL_CACHE.size} stock history datasets from disk. Instant backtest ready.`);
+  }
+} catch (e) {
+  console.error('[Cache Hydrate Error]', e.message);
+}
+
+let saveCacheTimeout = null;
+function scheduleCacheSave() {
+  if (saveCacheTimeout) return;
+  saveCacheTimeout = setTimeout(() => {
+    saveCacheTimeout = null;
+    try {
+      const exportObj = {};
+      for (const [k, v] of HISTORICAL_CACHE.entries()) {
+        exportObj[k] = v;
+      }
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(exportObj));
+    } catch (e) {}
+  }, 5000);
+}
 
 /**
  * Market-Hour & Weekend Awareness (100% Fact: Weekends rollback to Friday's completed session)
@@ -842,7 +874,7 @@ async function fetchStockHistory(symbol, market = 'TH') {
   const cacheKey = `${market}:${cleanSymbol}`;
 
   const cached = HISTORICAL_CACHE.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+  if (cached && (Date.now() - cached.timestamp < HISTORICAL_CANDLE_TTL_MS)) {
     return cached.candles;
   }
 
@@ -940,6 +972,7 @@ async function fetchStockHistory(symbol, market = 'TH') {
 
     if (cleanCandles.length > 0) {
       HISTORICAL_CACHE.set(cacheKey, { timestamp: Date.now(), candles: cleanCandles });
+      scheduleCacheSave();
     }
     return cleanCandles;
   } catch (err) {
@@ -2512,7 +2545,7 @@ async function handleScan(req, res, parsedUrl) {
 
         const benchCandles = await fetchBenchmarkCandles(market);
 
-        const concurrency = 8;
+        const concurrency = 25; // Boosted from 8 to 25 for 3x faster network throughput
         let currentIndex = 0;
 
         const worker = async () => {
