@@ -1987,6 +1987,29 @@ async function handleScan(req, res, parsedUrl) {
         const benchmarks = await fetchMarketBenchmarks(market, activeMarketSessionDate, false);
         const primaryBench = benchmarks[0] || { changePct: 0, label: market === 'TH' ? 'SET' : 'VOO' };
 
+        // Authentic William O'Neil / IBD Market-Wide Percentile RS Rating (1-99)
+        const stockRawRsMap = new Map();
+        for (const item of rawStocks) {
+          const d = item.d;
+          if (!d) continue;
+          const symbol = (d[0] || '').replace('SET:', '').replace('MAI:', '').replace('NASDAQ:', '').replace('NYSE:', '').replace('AMEX:', '').trim();
+          const pW = d[22] || 0;
+          const p1M = d[23] || 0;
+          const p3M = d[24] || 0;
+          const p6M = d[25] || 0;
+          // William O'Neil CANSLIM Weighted Performance: 40% 3M + 25% 1M + 20% 6M + 15% 1W
+          const rawRs = (0.40 * p3M) + (0.25 * p1M) + (0.20 * p6M) + (0.15 * pW);
+          stockRawRsMap.set(symbol, rawRs);
+        }
+
+        const sortedByRawRs = Array.from(stockRawRsMap.entries()).sort((a, b) => a[1] - b[1]);
+        const totalMarketCount = Math.max(1, sortedByRawRs.length);
+        const rsPercentileMap = new Map();
+        sortedByRawRs.forEach(([sym, score], idx) => {
+          const percentile = Math.max(1, Math.min(99, Math.round(((idx + 1) / totalMarketCount) * 99)));
+          rsPercentileMap.set(sym, percentile);
+        });
+
         const processedStocks = [];
         let advancers = 0, decliners = 0, unchanged = 0;
         const sectorMap = {};
@@ -2157,15 +2180,8 @@ async function handleScan(req, res, parsedUrl) {
             isWinnerTripleConfluence
           };
 
-          // Real RS Relative Strength Score
-          let rsScore = 50;
-          if (perf3M > 0) rsScore += 15;
-          else if (perf3M < 0) rsScore -= 10;
-          if (perf1M > 0) rsScore += 12;
-          else if (perf1M < 0) rsScore -= 8;
-          if (perfW > 0) rsScore += 8;
-          if (dist52WHigh >= -10) rsScore += 15;
-          rsScore = Math.min(99, Math.max(1, rsScore));
+          // Authentic William O'Neil / IBD Market-Wide Percentile RS Rating (1-99)
+          const rsScore = rsPercentileMap.get(symbol) || 50;
 
           // Composite Score (0-100)
           let compScore = 40;
@@ -2958,7 +2974,7 @@ async function handleScan(req, res, parsedUrl) {
                 distEma20,
                 sector: getSectorForStock(sym, ''),
                 timeframeReturns,
-                rsScore: isUptrend ? 75 : 50,
+                rsScore,
                 compScore,
                 setupType: primarySetup,
                 setupDesc: primaryDesc,
