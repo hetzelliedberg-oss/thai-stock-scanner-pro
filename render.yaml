@@ -1,10 +1,10 @@
 services:
   - type: web
     name: thai-stock-scanner-pro
-    env: node
+    runtime: node
     plan: free
     buildCommand: ""
     startCommand: node server.js
     envVars:
       - key: NODE_VERSION
-        value: 20.x
+        value: 20

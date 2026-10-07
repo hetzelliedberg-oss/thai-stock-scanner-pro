@@ -3450,3 +3450,5 @@ server.listen(PORT, () => {
   console.log(` Active Session TH: ${getMarketActiveSessionDate('TH')} | Active Session US: ${getMarketActiveSessionDate('US')}`);
   console.log('=============================================================');
 });
+
+module.exports = server;
