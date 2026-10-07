@@ -718,11 +718,18 @@
 
                   {!scanning ? (
                     <button
-                      onClick={() => startScan(selectedDate, universe)}
+                      onClick={() => {
+                        const latest = getMarketActiveDate(market);
+                        const targetD = isDateInPast ? selectedDate : latest;
+                        if (!isDateInPast && selectedDate !== latest) {
+                          setSelectedDate(latest);
+                        }
+                        startScan(targetD, universe);
+                      }}
                       className="flex items-center space-x-2 px-5 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-xl shadow-indigo-600/30 transition-all"
                     >
                       <span>🚀</span>
-                      <span>{isDateInPast ? `สแกนย้อนหลัง (${selectedDate})` : `เริ่มสแกนสด (${selectedDate})`}</span>
+                      <span>{isDateInPast ? `สแกนย้อนหลัง (${selectedDate})` : `เริ่มสแกนสด (${activeSessionDate})`}</span>
                     </button>
                   ) : (
                     <button

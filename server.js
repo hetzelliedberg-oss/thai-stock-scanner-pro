@@ -1937,9 +1937,12 @@ async function handleScan(req, res, parsedUrl) {
         ];
 
         if (market === 'US') {
-          // Allow common stocks and ADRs (Depositary Receipts for global market leaders like TSM, ASML, ARM, NVO, BABA)
-          filter.push({ left: "close", operation: "greater", right: 2.0 });
-          filter.push({ left: "volume", operation: "greater", right: 100000 });
+          // Allow common stocks and ADRs on major US exchanges (NASDAQ, NYSE, AMEX)
+          filter.push({ left: "subtype", operation: "in_range", right: ["common", "foreign"] });
+          filter.push({ left: "exchange", operation: "in_range", right: ["NASDAQ", "NYSE", "AMEX"] });
+          filter.push({ left: "close", operation: "greater", right: 5.0 });
+          filter.push({ left: "volume", operation: "greater", right: 200000 });
+          filter.push({ left: "market_cap_basic", operation: "greater", right: 1000000000 });
           if (universe === 'NASDAQ100') {
             filter.push({ left: "exchange", operation: "equal", right: "NASDAQ" });
           } else if (universe === 'SP500') {
